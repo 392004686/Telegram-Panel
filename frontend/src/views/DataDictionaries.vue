@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-alert
-      title="当前系统内置变量：{time}，格式为 yyyyMMddHHmmss。文本字段通常支持 {time} 和 {字典名}；图片字段通常只能使用单个图片字典变量，例如 {avatar}。"
+      title="填写方法：字典名称是任务中引用的变量名，例如 promo_text 对应 {promo_text}；显示名称仅用于页面识别。文本字典一行一条，图片/视频字典上传多个素材；随机模式每次随机取一项，队列模式按顺序轮换。"
       type="info"
       :closable="false"
       show-icon
@@ -13,6 +13,7 @@
         <el-input v-model="search" placeholder="搜索字典" clearable class="search" />
         <el-button type="primary" @click="openCreate('text')">新建文本字典</el-button>
         <el-button @click="openCreate('image')">新建图片字典</el-button>
+        <el-button @click="openCreate('video')">新建视频字典</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </div>
     </el-card>
@@ -34,7 +35,7 @@
         </el-table-column>
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'image' ? 'warning' : 'primary'" size="small">{{ row.type === 'image' ? '图片' : '文本' }}</el-tag>
+            <el-tag :type="row.type === 'image' ? 'warning' : row.type === 'video' ? 'danger' : 'primary'" size="small">{{ dictionaryTypeLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="读取模式" width="110">
@@ -94,6 +95,7 @@
               <el-select v-model="editor.form.type" :disabled="editor.saving || !!editor.form.id" class="full">
                 <el-option label="文本字典" value="text" />
                 <el-option label="图片字典" value="image" />
+                <el-option label="视频字典" value="video" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -124,29 +126,30 @@
 
         <template v-else>
           <el-alert
-            title="图片字典支持一次或分批选择多张图；删除字典或删除字典项时会同步清理图片文件，点击保存字典后才正式生效。"
+            :title="editor.form.type === 'image' ? '图片字典可一次或分批选择多张图片，供头像或消息任务按随机/队列模式取用。' : '视频字典可保存多个视频素材，后续支持视频的自动任务可按随机/队列模式取用。组合文字与媒体时应由任务的消息模板同时引用多个字典，不需要复制一份组合字典。'"
             type="info"
             :closable="false"
             show-icon
             class="mb-3"
           />
-          <el-form-item label="选择图片">
+          <el-form-item :label="editor.form.type === 'image' ? '选择图片' : '选择视频'">
             <el-upload
               v-model:file-list="editor.imageFiles"
               :auto-upload="false"
               multiple
-              accept="image/*"
-              list-type="picture-card"
+              :accept="editor.form.type === 'image' ? 'image/*' : 'video/mp4,video/quicktime,video/webm,.m4v,.mkv'"
+              :list-type="editor.form.type === 'image' ? 'picture-card' : 'text'"
               :disabled="editor.saving"
             >
               <el-icon><Plus /></el-icon>
             </el-upload>
           </el-form-item>
 
-          <el-form-item v-if="editor.existingImages.length" label="现有图片">
+          <el-form-item v-if="editor.existingImages.length" :label="editor.form.type === 'image' ? '现有图片' : '现有视频'">
             <div class="image-grid">
               <div v-for="image in editor.existingImages" :key="image.id" class="image-cell">
-                <el-image :src="assetUrl(image.assetPath)" fit="cover" class="image-preview" :preview-src-list="[assetUrl(image.assetPath)]" />
+                <el-image v-if="editor.form.type === 'image'" :src="assetUrl(image.assetPath)" fit="cover" class="image-preview" :preview-src-list="[assetUrl(image.assetPath)]" />
+                <video v-else :src="assetUrl(image.assetPath)" controls preload="metadata" class="image-preview" />
                 <div class="image-meta">
                   <span class="ellipsis">{{ image.fileName }}</span>
                   <el-button link type="danger" @click="removeExistingImage(image)">删除</el-button>
@@ -186,7 +189,7 @@ import { panelApi } from '@/api/panel'
 import type { DataDictionary, DataDictionaryItem } from '@/api/types'
 import { formatTime } from '@/utils/format'
 
-type DictionaryType = 'text' | 'image'
+type DictionaryType = 'text' | 'image' | 'video'
 
 interface ExistingImage {
   id: number
@@ -216,6 +219,7 @@ const editor = reactive({
 
 const editorTitle = computed(() => {
   if (editor.form.type === 'image') return editor.form.id ? '编辑图片字典' : '新建图片字典'
+  if (editor.form.type === 'video') return editor.form.id ? '编辑视频字典' : '新建视频字典'
   return editor.form.id ? '编辑文本字典' : '新建文本字典'
 })
 
@@ -263,7 +267,7 @@ function edit(row: DataDictionary) {
   resetEditor()
   const items = Array.isArray(row.items) ? row.items : []
   editor.form.id = row.id
-  editor.form.type = row.type === 'image' ? 'image' : 'text'
+  editor.form.type = row.type === 'image' ? 'image' : row.type === 'video' ? 'video' : 'text'
   editor.form.name = row.name
   editor.form.displayName = row.displayName
   editor.form.description = row.description || ''
@@ -303,7 +307,7 @@ async function saveDictionary() {
   if (editor.form.type === 'text') {
     await saveTextDictionary()
   } else {
-    await saveImageDictionary()
+    await saveMediaDictionary()
   }
 }
 
@@ -335,13 +339,13 @@ async function saveTextDictionary() {
   }
 }
 
-async function saveImageDictionary() {
+async function saveMediaDictionary() {
   const files: File[] = []
   for (const uploadFile of editor.imageFiles) {
     if (uploadFile.raw) files.push(uploadFile.raw as File)
   }
   if (editor.existingImages.length === 0 && files.length === 0) {
-    ElMessage.warning('图片字典至少需要一张图片')
+    ElMessage.warning(`${editor.form.type === 'image' ? '图片' : '视频'}字典至少需要一个文件`)
     return
   }
 
@@ -353,11 +357,12 @@ async function saveImageDictionary() {
   form.append('readMode', editor.form.readMode)
   form.append('isEnabled', String(editor.form.isEnabled))
   form.append('keepItemIds', editor.existingImages.map((x) => x.id).join(','))
-  files.forEach((file) => form.append('images', file))
+  files.forEach((file) => form.append(editor.form.type === 'image' ? 'images' : 'videos', file))
 
   editor.saving = true
   try {
-    await panelApi.saveImageDictionary(form)
+    if (editor.form.type === 'image') await panelApi.saveImageDictionary(form)
+    else await panelApi.saveVideoDictionary(form)
     ElMessage.success('图片字典已保存')
     editor.visible = false
     await load()
@@ -413,6 +418,10 @@ function resetEditor() {
 
 function variableName(name: string) {
   return `{${safeText(name)}}`
+}
+
+function dictionaryTypeLabel(type: string) {
+  return type === 'image' ? '图片' : type === 'video' ? '视频' : '文本'
 }
 
 function assetUrl(assetPath: string) {

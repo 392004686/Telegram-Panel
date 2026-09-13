@@ -87,6 +87,24 @@ public sealed class ImageAssetStorageService
         return await SaveAsync(stream, file.Name, scope, kind, cancellationToken);
     }
 
+    public async Task<StoredImageAssetInfo> SaveRawAsync(Stream fileStream, string fileName, string scope, CancellationToken cancellationToken = default)
+    {
+        scope = NormalizeScope(scope);
+        if (scope.Length == 0) throw new ArgumentException("文件作用域不能为空", nameof(scope));
+        var safeName = Path.GetFileName(string.IsNullOrWhiteSpace(fileName) ? "video.mp4" : fileName);
+        var extension = Path.GetExtension(safeName).ToLowerInvariant();
+        if (extension is not (".mp4" or ".mov" or ".m4v" or ".webm" or ".mkv"))
+            throw new InvalidOperationException("仅支持 MP4、MOV、M4V、WEBM 或 MKV 视频");
+        var relativeDir = Path.Combine("uploads", scope).Replace('\\', '/');
+        var fullDir = Path.Combine(GetStorageRootPath(), "uploads", scope.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(fullDir);
+        var storedName = $"{Guid.NewGuid():N}{extension}";
+        var relativePath = Path.Combine(relativeDir, storedName).Replace('\\', '/');
+        await using var output = File.Create(Path.Combine(fullDir, storedName));
+        await fileStream.CopyToAsync(output, cancellationToken);
+        return new StoredImageAssetInfo(relativePath, safeName);
+    }
+
     public Task<Stream> OpenReadAsync(string assetPath, CancellationToken cancellationToken = default)
     {
         assetPath = NormalizeAssetPath(assetPath);

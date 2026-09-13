@@ -98,6 +98,7 @@
         </div>
       </div>
       <el-select v-model="deviceProfileKey" class="category-select" filterable :disabled="busy">
+        <el-option label="默认配置文件指纹（无配置时随机）" value="imported-json" />
         <el-option label="随机设备指纹" value="random" />
         <el-option
           v-for="profile in deviceProfiles"
@@ -122,6 +123,7 @@
             <li>批量导入：每个账号一个独立子文件夹，文件夹内包含一个 .json + 一个 .session</li>
             <li>tdata 协议包：支持 Zip 内包含 tdata 目录（含 key_datas / D877F783D5D3EF8C*）</li>
             <li>二级密码：自动解析账号目录下的 2fa.txt 文件作为二级密码保存到数据库</li>
+            <li>设备指纹：推荐选择“默认配置文件指纹”，分别复用每个 JSON 中的 app_version、device_model、system_version 和语言字段；缺失字段按该账号稳定随机补齐</li>
           </ul>
           <div class="mt-2">提示：导入 tdata 会使用系统设置里的 Telegram API 池；未关闭内置官方 API 时可直接回退使用。</div>
         </template>

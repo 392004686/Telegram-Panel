@@ -121,6 +121,20 @@ public sealed class DataDictionaryService
         IReadOnlyList<DataDictionaryImageItemInput> newImages,
         CancellationToken cancellationToken = default)
     {
+        return await SaveMediaDictionaryAsync(id, name, displayName, description, readMode, isEnabled, keepItemIds, newImages, DataDictionaryTypes.Image, "图片", cancellationToken);
+    }
+
+    public async Task<DataDictionary> SaveVideoDictionaryAsync(
+        int? id, string name, string displayName, string? description, string readMode, bool isEnabled,
+        IReadOnlyCollection<int> keepItemIds, IReadOnlyList<DataDictionaryImageItemInput> newVideos,
+        CancellationToken cancellationToken = default) =>
+        await SaveMediaDictionaryAsync(id, name, displayName, description, readMode, isEnabled, keepItemIds, newVideos, DataDictionaryTypes.Video, "视频", cancellationToken);
+
+    private async Task<DataDictionary> SaveMediaDictionaryAsync(
+        int? id, string name, string displayName, string? description, string readMode, bool isEnabled,
+        IReadOnlyCollection<int> keepItemIds, IReadOnlyList<DataDictionaryImageItemInput> newImages,
+        string dictionaryType, string typeLabel, CancellationToken cancellationToken)
+    {
         name = NormalizeName(name);
         displayName = NormalizeDisplayName(displayName);
         description = NormalizeNullable(description);
@@ -134,17 +148,17 @@ public sealed class DataDictionaryService
         await EnsureUniqueNameAsync(id, name, cancellationToken);
 
         var keepSet = (keepItemIds ?? Array.Empty<int>()).ToHashSet();
-        var entity = await LoadOrCreateAsync(id, DataDictionaryTypes.Image, cancellationToken);
+        var entity = await LoadOrCreateAsync(id, dictionaryType, cancellationToken);
         var oldItems = await _itemRepository.GetByDictionaryIdAsync(entity.Id, cancellationToken);
         var retainedCount = oldItems.Count(x => keepSet.Contains(x.Id));
         var incomingCount = newImages?.Count ?? 0;
         if (retainedCount + incomingCount == 0)
-            throw new InvalidOperationException("图片字典至少需要一张图片");
+            throw new InvalidOperationException($"{typeLabel}字典至少需要一个{typeLabel}文件");
 
         entity.Name = name;
         entity.DisplayName = displayName;
         entity.Description = description;
-        entity.Type = DataDictionaryTypes.Image;
+        entity.Type = dictionaryType;
         entity.ReadMode = readMode;
         entity.IsEnabled = isEnabled;
         entity.UpdatedAt = DateTime.UtcNow;

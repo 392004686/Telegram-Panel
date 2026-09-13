@@ -83,12 +83,12 @@
 
     <el-card shadow="never" class="page-card mt-4">
       <el-table
+        class="accounts-table"
         ref="tableRef"
         v-loading="loading"
         :data="rows"
         stripe
         row-key="id"
-        class="accounts-table"
         @selection-change="onSelectionChange"
       >
         <el-table-column type="selection" width="48" reserve-selection />
@@ -257,6 +257,7 @@
           <el-form-item label="设备指纹">
             <el-select v-model="details.form.deviceProfileKey" class="full" filterable>
               <el-option label="跟随系统默认" value="" />
+              <el-option v-if="details.form.deviceProfileKey.startsWith('imported-json:')" label="导入配置文件指纹" :value="details.form.deviceProfileKey" />
               <el-option label="随机设备指纹" value="random" />
               <el-option
                 v-for="profileOption in deviceProfiles"
@@ -2282,6 +2283,19 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 2px;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: visible;
+}
+
+.accounts-table :deep(.el-table-fixed-column--right),
+.accounts-table :deep(.el-table__fixed-right-patch) {
+  background: var(--tp-panel) !important;
+  z-index: 3;
+}
+
+.accounts-table :deep(.el-table__body tr:hover > .el-table-fixed-column--right) {
+  background: var(--tp-table-row-hover-bg) !important;
 }
 
 .ellipsis {

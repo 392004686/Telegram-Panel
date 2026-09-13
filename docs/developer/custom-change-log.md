@@ -91,6 +91,16 @@
 
 ## 上游升级检查清单
 
+### 2026-09-13 混合发送、导入指纹与视频字典
+
+- 单次立即发送改为文字、图片、视频混合编辑；最多 10 个媒体。勾选“合并发送”时媒体作为同一个 Telegram 媒体组且文字作为说明，不勾选时按文字和文件顺序逐条发送。
+- 账号列表固定操作列增加独立背景与层级，悬停任意行时操作按钮不再被滚动内容遮挡。
+- Zip 导入增加“默认配置文件指纹（无配置时随机）”：逐账号读取 JSON 的 `app_version`、`device_model`、`system_version` 和语言字段并编码保存到账号 `DeviceProfileKey`；缺失字段稳定随机补齐，不新增数据库列。
+- 数据字典补充填写说明并新增视频字典；视频文件持久化到 `/data/uploads/dictionaries/`。组合字典暂不新增：后续自动任务由一条消息模板分别引用文本、图片或视频字典，保持各素材库可复用且避免组合重复。
+- 新增 `POST /api/panel/data-dictionaries/video`，支持 MP4/MOV/M4V/WEBM/MKV，单文件最大 200 MB。
+- 重点冲突区域：`ChatResources.vue`、`Accounts.vue`、`AccountImport.vue`、`DataDictionaries.vue`、`PanelAdminApiEndpoints.cs`、`AccountImportService.cs`、`TelegramDeviceProfileCatalog.cs`、数据字典服务和资产存储服务。
+- 回滚：切回上一镜像不会删除已保存字典或素材；旧版会忽略视频字典和编码的导入画像。回滚前如需旧版继续连接这些账号，应在账号详情改为旧版可识别的内置画像。
+
 ```bash
 git fetch upstream --prune
 git switch codex/multi-user-ui

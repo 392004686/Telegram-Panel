@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 using TelegramPanel.Core.Services.Telegram;
 using Xunit;
 
@@ -109,5 +110,22 @@ public sealed class TelegramDeviceProfileCatalogTests
 
         Assert.False(string.IsNullOrWhiteSpace(profile.DeviceModel));
         Assert.False(string.IsNullOrWhiteSpace(profile.SystemVersion));
+    }
+
+    [Fact]
+    public void ImportedJsonProfileRoundTripsExactValuesAndFillsMissingFields()
+    {
+        using var document = JsonDocument.Parse("""
+            {"app_version":"9.1","device_model":"Imported Phone","system_version":"Android 15"}
+            """);
+        var key = TelegramDeviceProfileCatalog.BuildImportedProfileKey(document.RootElement, 6, "account-1");
+        var profile = TelegramDeviceProfileCatalog.ResolveClientProfile(
+            new ConfigurationBuilder().Build(), 6, key, "ignored");
+
+        Assert.Equal("9.1", profile.AppVersion);
+        Assert.Equal("Imported Phone", profile.DeviceModel);
+        Assert.Equal("Android 15", profile.SystemVersion);
+        Assert.False(string.IsNullOrWhiteSpace(profile.SystemLangCode));
+        Assert.False(string.IsNullOrWhiteSpace(profile.LangCode));
     }
 }

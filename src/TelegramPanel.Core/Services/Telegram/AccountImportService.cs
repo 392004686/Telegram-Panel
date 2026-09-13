@@ -621,6 +621,12 @@ public class AccountImportService
             var nickname = BuildNickname(firstName, lastName, username);
             _ = TryGetString(root, out var sessionKey, "session_string", "sessionString");
             sessionKey = string.IsNullOrWhiteSpace(sessionKey) ? null : sessionKey.Trim();
+            var effectiveDeviceProfileKey = string.Equals(
+                deviceProfileKey,
+                TelegramDeviceProfileCatalog.ImportedProfileKey,
+                StringComparison.OrdinalIgnoreCase)
+                ? TelegramDeviceProfileCatalog.BuildImportedProfileKey(root, apiId, phone)
+                : deviceProfileKey;
 
             var dir = Path.GetDirectoryName(jsonPath) ?? extractDirFallback();
             var baseName = Path.GetFileNameWithoutExtension(jsonPath);
@@ -710,8 +716,8 @@ public class AccountImportService
                     existing.SessionPath = targetSessionPath;
                     existing.ApiId = apiId;
                     existing.ApiHash = apiHash.Trim();
-                    if (!string.IsNullOrWhiteSpace(deviceProfileKey))
-                        existing.DeviceProfileKey = deviceProfileKey.Trim();
+                    if (!string.IsNullOrWhiteSpace(effectiveDeviceProfileKey))
+                        existing.DeviceProfileKey = effectiveDeviceProfileKey.Trim();
                     // 代理绑定完成前保持停用，避免后台任务在短暂窗口使用旧路由。
                     existing.IsActive = false;
                     existing.LastSyncAt = DateTime.UtcNow;
@@ -732,7 +738,7 @@ public class AccountImportService
                         SessionPath = targetSessionPath,
                         ApiId = apiId,
                         ApiHash = apiHash.Trim(),
-                        DeviceProfileKey = string.IsNullOrWhiteSpace(deviceProfileKey) ? null : deviceProfileKey.Trim(),
+                        DeviceProfileKey = string.IsNullOrWhiteSpace(effectiveDeviceProfileKey) ? null : effectiveDeviceProfileKey.Trim(),
                         IsActive = false,
                         CategoryId = categoryId,
                         TwoFactorPassword = string.IsNullOrWhiteSpace(effectiveTwoFactorPassword) ? null : effectiveTwoFactorPassword.Trim(),

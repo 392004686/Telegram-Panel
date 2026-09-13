@@ -172,37 +172,32 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="消息类型">
-          <el-radio-group v-model="instantMessage.type" @change="clearInstantFile">
-            <el-radio-button value="text">文字</el-radio-button>
-            <el-radio-button value="image">图片</el-radio-button>
-            <el-radio-button value="video">视频</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item :label="instantMessage.type === 'text' ? '消息内容' : '说明文字（可选）'">
+        <el-alert class="mb-3" type="info" :closable="false" show-icon title="可同时填写文字并选择多张图片或多个视频；勾选合并发送时作为一条媒体组消息发送，不勾选则按文字、图片、视频顺序逐条发送。" />
+        <el-form-item label="消息文字（可选）">
           <el-input
             v-model="instantMessage.text"
             type="textarea"
             :rows="3"
-            :maxlength="instantMessage.type === 'text' ? 4096 : 1024"
+            maxlength="4096"
             show-word-limit
-            :placeholder="instantMessage.type === 'text' ? '输入要立即发送的文字' : '输入随媒体发送的说明文字'"
+            placeholder="输入文字；合并发送媒体时作为媒体组说明"
           />
         </el-form-item>
-        <el-form-item v-if="instantMessage.type !== 'text'" :label="instantMessage.type === 'image' ? '图片文件' : '视频文件'">
+        <el-form-item label="图片/视频（可选）">
           <el-upload
             v-model:file-list="instantMessage.files"
             :auto-upload="false"
-            :limit="1"
-            :accept="instantMessage.type === 'image' ? 'image/*' : 'video/mp4,video/quicktime,video/webm,.m4v,.mkv'"
-            :on-exceed="replaceInstantFile"
+            multiple
+            :limit="10"
+            accept="image/*,video/mp4,video/quicktime,video/webm,.m4v,.mkv"
           >
-            <el-button>选择{{ instantMessage.type === 'image' ? '图片' : '视频' }}</el-button>
+            <el-button>选择图片或视频</el-button>
             <template #tip>
-              <div class="el-upload__tip">单个文件，图片不超过 20 MB，视频不超过 200 MB。</div>
+              <div class="el-upload__tip">最多 10 个文件；单张图片不超过 20 MB，单个视频不超过 200 MB。</div>
             </template>
           </el-upload>
         </el-form-item>
+        <el-checkbox v-model="instantMessage.merge" class="mb-3">合并发送（作为一条媒体组消息）</el-checkbox>
         <el-button type="primary" :loading="instantMessage.sending" @click="sendInstantMessage">立即发送</el-button>
       </el-form>
 
@@ -566,7 +561,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type TableInstance, type UploadRawFile, type UploadUserFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type TableInstance, type UploadUserFile } from 'element-plus'
 import { ArrowDown, Delete, Edit, Folder, MoreFilled, Plus, Refresh, Select, View } from '@element-plus/icons-vue'
 import { panelApi } from '@/api/panel'
 import ColumnVisibilityMenu from '@/components/ColumnVisibilityMenu.vue'
@@ -642,10 +637,10 @@ const detail = reactive({
   adminKickLoadingUserId: null as number | null,
 })
 const instantMessage = reactive({
-  type: 'text' as 'text' | 'image' | 'video',
   accountId: 0,
   text: '',
   files: [] as UploadUserFile[],
+  merge: true,
   sending: false,
 })
 const systemAccounts = reactive({
@@ -939,7 +934,6 @@ async function showDetails(row: Row) {
   detail.kickAccountId = filters.accountId > 0 ? filters.accountId : 0
   detail.kickTarget = ''
   detail.kickPermanent = false
-  instantMessage.type = 'text'
   instantMessage.accountId = filters.accountId > 0 ? filters.accountId : 0
   instantMessage.text = ''
   instantMessage.files = []
@@ -963,38 +957,28 @@ async function showDetails(row: Row) {
   await loadDetailAdmins(resourceId)
 }
 
-function clearInstantFile() {
-  instantMessage.files = []
-}
-
-function replaceInstantFile(files: UploadRawFile[]) {
-  const file = files.at(-1)
-  instantMessage.files = file ? [{ name: file.name, raw: file }] : []
-}
-
 async function sendInstantMessage() {
   if (!detail.row) return
   const text = instantMessage.text.trim()
-  if (instantMessage.type === 'text' && !text) {
-    ElMessage.warning('请输入消息内容')
+  const files = instantMessage.files.flatMap((item) => item.raw ? [item.raw as File] : [])
+  if (!text && files.length === 0) {
+    ElMessage.warning('请输入消息文字或选择图片/视频')
     return
   }
-  const file = instantMessage.files[0]?.raw
-  if (instantMessage.type !== 'text' && !file) {
-    ElMessage.warning(`请选择${instantMessage.type === 'image' ? '图片' : '视频'}文件`)
-    return
-  }
-  const maxBytes = instantMessage.type === 'image' ? 20 * 1024 * 1024 : 200 * 1024 * 1024
-  if (file && file.size > maxBytes) {
-    ElMessage.warning(`${instantMessage.type === 'image' ? '图片' : '视频'}超过大小限制`)
-    return
+  for (const file of files) {
+    const isImage = file.type.startsWith('image/')
+    const maxBytes = isImage ? 20 * 1024 * 1024 : 200 * 1024 * 1024
+    if (file.size > maxBytes) {
+      ElMessage.warning(`${isImage ? '图片' : '视频'} ${file.name} 超过大小限制`)
+      return
+    }
   }
 
   const form = new FormData()
   form.append('accountId', String(instantMessage.accountId))
-  form.append('type', instantMessage.type)
   form.append('text', text)
-  if (file) form.append('file', file, file.name)
+  form.append('merge', String(instantMessage.merge))
+  files.forEach((file) => form.append('files', file, file.name))
 
   instantMessage.sending = true
   try {

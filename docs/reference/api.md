@@ -216,12 +216,17 @@ proxyText: http://user-a:password-a@proxy-a.example.com:8080
 批量邀请、管理员变更、退出和解散等端点可在对应 Vue API 调用或 Endpoint 文件中查看。
 
 单次发送端点使用 `multipart/form-data`：`accountId=0` 表示按目标自动选择关联执行账号，
-`type=text|image|video`，`text` 为正文或媒体说明，媒体文件字段为 `file`。文字最多 4096 字符，
-媒体说明最多 1024 字符；图片最大 20 MB，视频最大 200 MB，视频支持 MP4、MOV、M4V、WEBM
+`text` 为正文或媒体说明，媒体文件字段为可重复的 `files`，`merge=true|false` 控制媒体组或依次发送。
+一次最多 10 个媒体；普通文字最多 4096 字符，合并媒体说明最多 1024 字符；图片最大 20 MB，视频最大 200 MB，视频支持 MP4、MOV、M4V、WEBM
 和 MKV。成功返回 `success=true`、`message` 和 Telegram `messageId`。失败排查依次检查执行账号
 是否关联且 Session 有效、是否能访问目标、上传格式/大小、代理和 Telegram 限流。此功能不写入
 素材字典或业务数据库，只把本次内容立即发送到 Telegram；回滚旧版本只移除入口和端点，已发送
 消息仍保留在 Telegram，需要在对应会话中另行删除。
+
+`POST /api/panel/data-dictionaries/video` 使用 `multipart/form-data` 保存视频字典，字段与图片字典一致，
+上传字段为可重复的 `videos`。文件写入持久化目录 `/data/uploads/dictionaries/`，数据库只保存字典元数据、
+排序和相对资产路径。当前不建立“组合字典”：自动任务应在消息规则中分别引用文本与媒体字典，组合关系
+属于任务配置，避免同一素材在多个组合中重复存储。
 
 自当前开发版起，群组详情的管理员表可对非创建者执行
 `POST /api/panel/groups/{id}/admins/{userId}/kick`。端点不接受用户名、访问哈希或永久封禁

@@ -8,9 +8,10 @@ const layout = readFileSync(new URL('../src/layouts/MainLayout.vue', import.meta
 
 test('群组和频道详情支持单次发送文字图片和视频', () => {
   assert.match(resources, /单次立即发送/)
-  assert.match(resources, /value="text">文字/)
-  assert.match(resources, /value="image">图片/)
-  assert.match(resources, /value="video">视频/)
+  assert.match(resources, /选择图片或视频/)
+  assert.match(resources, /合并发送（作为一条媒体组消息）/)
+  assert.match(resources, /form\.append\('merge'/)
+  assert.match(resources, /form\.append\('files'/)
   assert.match(resources, /panelApi\.sendChannelMessage/)
   assert.match(resources, /panelApi\.sendGroupMessage/)
   assert.match(api, /\/channels\/\$\{id\}\/message/)

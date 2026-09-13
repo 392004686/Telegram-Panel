@@ -32,7 +32,7 @@ public static class PanelAdminApiEndpoints
     internal const long AccountImportZipMaxRequestSize = AccountImportZipMaxFileSize + 1024 * 1024;
     internal const long InstantMessageImageMaxFileSize = 20L * 1024 * 1024;
     internal const long InstantMessageVideoMaxFileSize = 200L * 1024 * 1024;
-    internal const long InstantMessageMaxRequestSize = InstantMessageVideoMaxFileSize + 1024 * 1024;
+    internal const long InstantMessageMaxRequestSize = InstantMessageVideoMaxFileSize * 10 + 10L * 1024 * 1024;
 
     public static void MapPanelAdminApi(this WebApplication app, bool requireAdminAuth)
     {
@@ -305,6 +305,8 @@ public static class PanelAdminApiEndpoints
         secured.MapGet("/data-dictionaries", GetDataDictionariesAsync);
         secured.MapPost("/data-dictionaries/text", SaveTextDictionaryAsync);
         secured.MapPost("/data-dictionaries/image", SaveImageDictionaryAsync).DisableAntiforgery();
+        ConfigureInstantMessageUploadLimits(
+            secured.MapPost("/data-dictionaries/video", SaveVideoDictionaryAsync).DisableAntiforgery());
         secured.MapPatch("/data-dictionaries/{id:int}/enabled", SetDictionaryEnabledAsync);
         secured.MapPost("/data-dictionaries/{id:int}/reset-queue", async (int id, DataDictionaryService dictionaries) =>
         {
@@ -3506,47 +3508,72 @@ public static class PanelAdminApiEndpoints
             return Results.BadRequest(new OperationResultDto(false, "当前群组或频道暂无可用执行账号"));
 
         var form = await request.ReadFormAsync(cancellationToken);
-        var messageType = (form["type"].FirstOrDefault() ?? "text").Trim().ToLowerInvariant();
         var text = (form["text"].FirstOrDefault() ?? string.Empty).Trim();
-        var file = form.Files.GetFile("file");
+        var merge = bool.TryParse(form["merge"].FirstOrDefault(), out var parsedMerge) && parsedMerge;
+        var files = form.Files.GetFiles("files").ToList();
+        // 兼容上一版单文件表单。
+        if (files.Count == 0 && form.Files.GetFile("file") is { } legacyFile)
+            files.Add(legacyFile);
 
-        if (messageType == "text" && text.Length == 0)
-            return Results.BadRequest(new OperationResultDto(false, "请输入消息内容"));
-        if (messageType == "text" && text.Length > 4096)
+        if (text.Length == 0 && files.Count == 0)
+            return Results.BadRequest(new OperationResultDto(false, "请输入消息内容或选择媒体文件"));
+        if (files.Count > 10)
+            return Results.BadRequest(new OperationResultDto(false, "一次最多选择 10 个媒体文件"));
+        if (text.Length > (merge && files.Count > 0 ? 1024 : 4096))
             return Results.BadRequest(new OperationResultDto(false, "文字消息超过 Telegram 4096 字符限制"));
-        if (messageType is "image" or "video" && text.Length > 1024)
-            return Results.BadRequest(new OperationResultDto(false, "媒体说明文字超过 Telegram 1024 字符限制"));
-        if (messageType is "image" or "video" && file == null)
-            return Results.BadRequest(new OperationResultDto(false, messageType == "image" ? "请选择图片" : "请选择视频"));
-        if (messageType == "image" && file!.Length > InstantMessageImageMaxFileSize)
-            return Results.BadRequest(new OperationResultDto(false, "图片不能超过 20MB"));
-        if (messageType == "video" && file!.Length > InstantMessageVideoMaxFileSize)
-            return Results.BadRequest(new OperationResultDto(false, "视频不能超过 200MB"));
-        if (messageType == "image" && !(file!.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            return Results.BadRequest(new OperationResultDto(false, "上传文件不是图片"));
-        if (messageType == "video" && !IsSupportedVideo(file!))
-            return Results.BadRequest(new OperationResultDto(false, "仅支持 MP4、MOV、M4V、WEBM 或 MKV 视频"));
-        if (messageType is not ("text" or "image" or "video"))
-            return Results.BadRequest(new OperationResultDto(false, "消息类型无效"));
+        foreach (var file in files)
+        {
+            var image = IsSupportedImage(file);
+            if (!image && !IsSupportedVideo(file))
+                return Results.BadRequest(new OperationResultDto(false, $"不支持的媒体文件：{file.FileName}"));
+            if (image && file.Length > InstantMessageImageMaxFileSize)
+                return Results.BadRequest(new OperationResultDto(false, $"图片 {file.FileName} 不能超过 20MB"));
+            if (!image && file.Length > InstantMessageVideoMaxFileSize)
+                return Results.BadRequest(new OperationResultDto(false, $"视频 {file.FileName} 不能超过 200MB"));
+        }
 
         var resolved = await accountTools.ResolveChatTargetAsync(accountId.Value, targetId, cancellationToken);
         if (!resolved.Success || resolved.Target == null)
             return Results.BadRequest(new OperationResultDto(false, resolved.Error ?? "执行账号无法访问目标"));
 
-        (bool Success, string? Error, int? MessageId) result;
-        if (messageType == "text")
+        (bool Success, string? Error, int? MessageId) result = (true, null, null);
+        if (merge && files.Count > 1)
         {
-            result = await accountTools.SendMessageToResolvedChatAsync(
-                accountId.Value, resolved.Target, text, cancellationToken: cancellationToken);
+            var streams = files.Select(x => x.OpenReadStream()).ToList();
+            try
+            {
+                var album = files.Select((file, index) =>
+                    (Stream: (Stream)streams[index], file.FileName, IsImage: IsSupportedImage(file))).ToList();
+                result = await accountTools.SendMediaAlbumToResolvedChatAsync(
+                    accountId.Value, resolved.Target, album, text, cancellationToken);
+            }
+            finally
+            {
+                foreach (var stream in streams) await stream.DisposeAsync();
+            }
         }
-        else
+        else if (merge && files.Count == 1)
         {
-            await using var stream = file!.OpenReadStream();
-            result = messageType == "image"
+            var file = files[0];
+            await using var stream = file.OpenReadStream();
+            result = IsSupportedImage(file)
                 ? await accountTools.SendPhotoToResolvedChatAsync(
                     accountId.Value, resolved.Target, stream, file.FileName, text, cancellationToken: cancellationToken)
                 : await accountTools.SendVideoToResolvedChatAsync(
                     accountId.Value, resolved.Target, stream, file.FileName, text, cancellationToken);
+        }
+        else
+        {
+            if (text.Length > 0)
+                result = await accountTools.SendMessageToResolvedChatAsync(accountId.Value, resolved.Target, text, cancellationToken: cancellationToken);
+            foreach (var file in files)
+            {
+                if (!result.Success) break;
+                await using var stream = file.OpenReadStream();
+                result = IsSupportedImage(file)
+                    ? await accountTools.SendPhotoToResolvedChatAsync(accountId.Value, resolved.Target, stream, file.FileName, cancellationToken: cancellationToken)
+                    : await accountTools.SendVideoToResolvedChatAsync(accountId.Value, resolved.Target, stream, file.FileName, cancellationToken: cancellationToken);
+            }
         }
 
         return result.Success
@@ -3561,6 +3588,10 @@ public static class PanelAdminApiEndpoints
             return true;
         return Path.GetExtension(file.FileName).ToLowerInvariant() is ".mp4" or ".mov" or ".m4v" or ".webm" or ".mkv";
     }
+
+    private static bool IsSupportedImage(IFormFile file) =>
+        (file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+        || Path.GetExtension(file.FileName).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".webp";
 
     internal static async Task<IResult> KickGroupAdminAsync(
         int id,
@@ -6155,6 +6186,45 @@ public static class PanelAdminApiEndpoints
         catch (Exception)
         {
             await DeleteUploadedImagesAsync();
+            throw;
+        }
+    }
+
+    private static async Task<IResult> SaveVideoDictionaryAsync(
+        HttpRequest httpRequest,
+        DataDictionaryService dictionaries,
+        ImageAssetStorageService assetStorage,
+        CancellationToken cancellationToken)
+    {
+        if (!httpRequest.HasFormContentType)
+            return Results.BadRequest(new OperationResultDto(false, "请使用 multipart/form-data 保存视频字典"));
+        var form = await httpRequest.ReadFormAsync(cancellationToken);
+        var id = ParseNullableInt(form["id"]);
+        var uploadScope = id is > 0 ? $"dictionaries/{id.Value}" : $"dictionaries/draft-{Guid.NewGuid():N}";
+        var newVideos = new List<DataDictionaryImageItemInput>();
+        try
+        {
+            foreach (var file in form.Files.GetFiles("videos"))
+            {
+                if (file.Length > InstantMessageVideoMaxFileSize)
+                    throw new InvalidOperationException($"视频 {file.FileName} 超过 200MB");
+                await using var stream = file.OpenReadStream();
+                var stored = await assetStorage.SaveRawAsync(stream, file.FileName, uploadScope, cancellationToken);
+                newVideos.Add(new DataDictionaryImageItemInput(stored.AssetPath, stored.FileName));
+            }
+            var saved = await dictionaries.SaveVideoDictionaryAsync(
+                id, form["name"], form["displayName"], form["description"], form["readMode"],
+                ParseBool(form["isEnabled"]), ParseIntList(form["keepItemIds"]), newVideos, cancellationToken);
+            return Results.Ok(ToDto(saved));
+        }
+        catch (InvalidOperationException ex)
+        {
+            foreach (var video in newVideos) await assetStorage.DeleteAssetAsync(video.AssetPath, cancellationToken);
+            return Results.BadRequest(new OperationResultDto(false, ex.Message));
+        }
+        catch
+        {
+            foreach (var video in newVideos) await assetStorage.DeleteAssetAsync(video.AssetPath, cancellationToken);
             throw;
         }
     }

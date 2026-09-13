@@ -1672,13 +1672,7 @@ public class AccountTelegramToolsService
             var uploaded = await client.UploadFileAsync(videoStream, uploadName);
             cancellationToken.ThrowIfCancellationRequested();
 
-            var mimeType = Path.GetExtension(uploadName).ToLowerInvariant() switch
-            {
-                ".mov" => "video/quicktime",
-                ".webm" => "video/webm",
-                ".mkv" => "video/x-matroska",
-                _ => "video/mp4"
-            };
+            var mimeType = ResolveVideoMimeType(uploadName);
             var sent = await client.SendMediaAsync(
                 target.Peer,
                 text.Length == 0 ? null : text,
@@ -1692,6 +1686,51 @@ public class AccountTelegramToolsService
             var (summary, details) = MapTelegramException(ex);
             var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
             return (false, msg, null);
+        }
+    }
+
+    /// <summary>将图片与视频作为同一个 Telegram 媒体组发送。</summary>
+    public async Task<(bool Success, string? Error, int? MessageId)> SendMediaAlbumToResolvedChatAsync(
+        int accountId,
+        ResolvedChatTarget target,
+        IReadOnlyList<(Stream Stream, string FileName, bool IsImage)> files,
+        string? caption = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (files.Count == 0) return (false, "媒体内容为空", null);
+            var text = (caption ?? string.Empty).Trim();
+            if (text.Length > 1024) return (false, "媒体组说明文字超过 Telegram 1024 字符限制", null);
+            var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+            var media = new List<InputMedia>(files.Count);
+            foreach (var file in files)
+            {
+                if (file.Stream.CanSeek) file.Stream.Position = 0;
+                var uploadName = NormalizeUploadFileName(file.FileName, file.IsImage ? "image.jpg" : "video.mp4");
+                var uploaded = await client.UploadFileAsync(file.Stream, uploadName);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (file.IsImage)
+                    media.Add(new InputMediaUploadedPhoto { file = uploaded });
+                else
+                    media.Add(new InputMediaUploadedDocument
+                    {
+                        file = uploaded,
+                        mime_type = ResolveVideoMimeType(uploadName),
+                        attributes = new DocumentAttribute[]
+                        {
+                            new DocumentAttributeFilename { file_name = uploadName },
+                            new DocumentAttributeVideo { flags = DocumentAttributeVideo.Flags.supports_streaming }
+                        }
+                    });
+            }
+            var sent = await client.SendAlbumAsync(target.Peer, media, text.Length == 0 ? null : text);
+            return (true, null, sent.LastOrDefault()?.id);
+        }
+        catch (Exception ex)
+        {
+            var (summary, details) = MapTelegramException(ex);
+            return (false, string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}", null);
         }
     }
 
@@ -2521,6 +2560,14 @@ public class AccountTelegramToolsService
         var name = Path.GetFileName((fileName ?? string.Empty).Trim());
         return string.IsNullOrWhiteSpace(name) ? fallback : name;
     }
+
+    private static string ResolveVideoMimeType(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    {
+        ".mov" => "video/quicktime",
+        ".webm" => "video/webm",
+        ".mkv" => "video/x-matroska",
+        _ => "video/mp4"
+    };
 
     private async Task<InputPeerUser?> TryResolveSystemPeerAsync(Client client)
     {

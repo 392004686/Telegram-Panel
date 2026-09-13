@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using System.Text;
+using System.Text.Json;
 
 namespace TelegramPanel.Core.Services.Telegram;
 
@@ -27,6 +29,8 @@ public static class TelegramDeviceProfileCatalog
 {
     public const string DefaultProfileKey = "android-default";
     public const string RandomProfileKey = "random";
+    public const string ImportedProfileKey = "imported-json";
+    private const string ImportedProfilePrefix = "imported-json:";
 
     private static readonly TelegramDeviceProfileDefinition[] BuiltInProfiles =
     {
@@ -97,6 +101,8 @@ public static class TelegramDeviceProfileCatalog
         string? profileKey,
         string stableKey)
     {
+        if (TryDecodeImportedProfile(profileKey, out var imported))
+            return imported;
         var definition = Find(configuration, profileKey);
         return definition?.ToClientProfile() ?? TelegramClientDeviceProfile.ForStableKey(apiId, stableKey);
     }
@@ -106,6 +112,45 @@ public static class TelegramDeviceProfileCatalog
 
     public static bool IsRandomProfileKey(string? value) =>
         string.Equals(NormalizeKey(value), RandomProfileKey, StringComparison.Ordinal);
+
+    public static string BuildImportedProfileKey(JsonElement root, int apiId, string stableKey)
+    {
+        static string? Read(JsonElement element, params string[] names)
+        {
+            foreach (var name in names)
+                if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
+                    return value.GetString()!.Trim();
+            return null;
+        }
+        var fallback = TelegramClientDeviceProfile.ForStableKey(apiId, stableKey);
+        var values = new[]
+        {
+            Read(root, "app_version", "appVersion") ?? fallback.AppVersion,
+            Read(root, "device_model", "deviceModel") ?? fallback.DeviceModel,
+            Read(root, "system_version", "systemVersion") ?? fallback.SystemVersion,
+            Read(root, "system_lang_code", "systemLangCode") ?? fallback.SystemLangCode,
+            Read(root, "lang_code", "langCode") ?? fallback.LangCode
+        };
+        var payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(values)))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return ImportedProfilePrefix + payload;
+    }
+
+    private static bool TryDecodeImportedProfile(string? key, out TelegramClientDeviceProfile profile)
+    {
+        profile = default!;
+        if (string.IsNullOrWhiteSpace(key) || !key.StartsWith(ImportedProfilePrefix, StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            var payload = key[ImportedProfilePrefix.Length..].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight((payload.Length + 3) / 4 * 4, '=');
+            var values = JsonSerializer.Deserialize<string[]>(Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+            if (values is not { Length: 5 } || values.Any(string.IsNullOrWhiteSpace)) return false;
+            profile = new TelegramClientDeviceProfile(values[0], values[1], values[2], values[3], values[4]);
+            return true;
+        }
+        catch { return false; }
+    }
 
     public static bool TryNormalizeSelectableKey(IConfiguration configuration, string? key, out string? normalizedKey)
     {
@@ -119,6 +164,12 @@ public static class TelegramDeviceProfileCatalog
         if (IsRandomProfileKey(requested))
         {
             normalizedKey = RandomProfileKey;
+            return true;
+        }
+
+        if (requested == ImportedProfileKey || TryDecodeImportedProfile(requested, out _))
+        {
+            normalizedKey = requested;
             return true;
         }
 
