@@ -23,26 +23,28 @@
 
       <div class="current-user">当前后台用户名：{{ auth.me?.username || 'admin' }}</div>
 
-      <el-form label-position="top">
-        <el-form-item label="新后台用户名">
-          <el-input
-            v-model="usernameForm.newUsername"
-            autocomplete="off"
-            placeholder="4-32 位，建议不要使用 admin/root 等常见名称"
-            @keyup.enter="saveUsername"
-          />
-          <div class="muted mt-2">修改后会立即更新当前登录会话；下次登录需使用新用户名。</div>
-        </el-form-item>
-        <el-form-item label="当前密码（用于确认修改用户名）">
-          <el-input v-model="usernameForm.currentPassword" type="password" show-password autocomplete="current-password" @keyup.enter="saveUsername" />
-        </el-form-item>
-      </el-form>
+      <template v-if="!auth.isReadOnly">
+        <el-form label-position="top">
+          <el-form-item label="新后台用户名">
+            <el-input
+              v-model="usernameForm.newUsername"
+              autocomplete="off"
+              placeholder="4-32 位，建议不要使用 admin/root 等常见名称"
+              @keyup.enter="saveUsername"
+            />
+            <div class="muted mt-2">修改后会立即更新当前登录会话；下次登录需使用新用户名。</div>
+          </el-form-item>
+          <el-form-item label="当前密码（用于确认修改用户名）">
+            <el-input v-model="usernameForm.currentPassword" type="password" show-password autocomplete="current-password" @keyup.enter="saveUsername" />
+          </el-form-item>
+        </el-form>
 
-      <div class="button-row">
-        <el-button type="primary" plain :loading="savingUsername" @click="saveUsername">保存用户名</el-button>
-      </div>
+        <div class="button-row">
+          <el-button type="primary" plain :loading="savingUsername" @click="saveUsername">保存用户名</el-button>
+        </div>
 
-      <el-divider />
+        <el-divider />
+      </template>
 
       <el-form label-position="top">
         <el-form-item label="当前密码">

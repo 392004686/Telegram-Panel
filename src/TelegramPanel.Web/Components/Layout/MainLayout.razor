@@ -18,28 +18,11 @@ else
         <MudAppBar Elevation="1">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
             <MudText Typo="Typo.h5" Class="ml-3">Telegram Panel</MudText>
-            <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-2" Style="cursor: pointer;"
-                     title="点击查看版本信息" OnClick="@ShowVersionInfo">
-                @VersionService.Version
-            </MudChip>
-            @if (_updateInfo is { Success: true, UpdateAvailable: true } && !string.IsNullOrWhiteSpace(_updateInfo.LatestVersion))
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Class="ml-2" Style="cursor: pointer;"
-                         title="发现新版本，点击查看更新说明" OnClick="@ShowVersionInfo">
-                    新版本 v@(_updateInfo.LatestVersion)
-                </MudChip>
-            }
             <MudSpacer />
             <MudIconButton Icon="@Icons.Material.Filled.Settings"
                            Color="Color.Inherit"
                            Href="/settings"
                            title="系统设置" />
-            <MudIconButton Icon="@Icons.Custom.Brands.GitHub"
-                           Color="Color.Inherit"
-                           Href="https://github.com/moeacgx/Telegram-Panel"
-                           Target="_blank"
-                           Rel="noopener noreferrer"
-                           title="GitHub" />
             <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                            Color="Color.Inherit"
                            OnClick="@ToggleDarkMode" />
@@ -59,14 +42,10 @@ else
 
 @using TelegramPanel.Web.Services
 @inject UiPreferencesService UiPreferences
-@inject IDialogService DialogService
-@inject AppSelfUpdateService SelfUpdate
 
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode = true;
-    private AppSelfUpdateInfo? _updateInfo;
-    private bool _autoPromptShown;
     private bool IsEmbedMode => HasQueryValue("embed", "1");
 
     private MudTheme _theme = new()
@@ -91,8 +70,6 @@ else
     {
         // 从配置文件读取用户的主题偏好
         _isDarkMode = await UiPreferences.GetIsDarkModeAsync();
-        if (!IsEmbedMode)
-            _ = LoadUpdateInfoAsync();
         // 确保初始化后 UI 能正确显示主题
         StateHasChanged();
     }
@@ -109,49 +86,6 @@ else
         await UiPreferences.SetIsDarkModeAsync(_isDarkMode);
         // 强制刷新组件状态，确保在异步操作后 UI 能及时更新
         StateHasChanged();
-    }
-
-    private async Task ShowVersionInfo()
-    {
-        await ShowVersionInfo(autoPrompt: false);
-    }
-
-    private async Task ShowVersionInfo(bool autoPrompt)
-    {
-        var options = new DialogOptions
-        {
-            CloseOnEscapeKey = true,
-            MaxWidth = MaxWidth.Medium,
-            FullWidth = true
-        };
-
-        var parameters = new DialogParameters
-        {
-            [nameof(TelegramPanel.Web.Components.Dialogs.VersionInfoDialog.AutoPrompt)] = autoPrompt
-        };
-
-        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.VersionInfoDialog>("版本信息", parameters, options);
-        await dialog.Result;
-
-        // 弹窗可能已触发更新/重启，关闭后刷新一次顶部状态
-        _updateInfo = await SelfUpdate.CheckLatestAsync(forceRefresh: true);
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task LoadUpdateInfoAsync()
-    {
-        try
-        {
-            _updateInfo = await SelfUpdate.CheckLatestAsync(forceRefresh: false);
-            await InvokeAsync(StateHasChanged);
-
-            // 启动期不自动弹 MudDialog，避免 Blazor Server 首次渲染时 DOM 尚未稳定导致 circuit 崩溃。
-            _autoPromptShown = _updateInfo is { Success: true, UpdateAvailable: true };
-        }
-        catch
-        {
-            // 检查更新失败不影响主界面
-        }
     }
 
     private bool HasQueryValue(string key, string value)

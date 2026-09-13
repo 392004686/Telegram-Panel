@@ -25,3 +25,15 @@ test('Telegram API 回到系统设置且设备指纹保留独立入口', async (
   assert.match(routerSource, /path: 'telegram-api', redirect: '\/settings'/)
   assert.match(settingsSource, /<template #header>Telegram API<\/template>/)
 })
+
+test('魔改版顶部隐藏作者版本、更新入口和仓库链接', () => {
+  assert.doesNotMatch(source, /openVersionDialog|versionDialog|version-chip/)
+  assert.doesNotMatch(source, /github\.com\/moeacgx\/Telegram-Panel|title="GitHub"/)
+  assert.doesNotMatch(source, /一键更新并重启|发现新版本/)
+})
+
+test('只读账号首次登录页面保留改密并隐藏改用户名入口', async () => {
+  const passwordSource = await readFile(new URL('../src/views/AdminPassword.vue', import.meta.url), 'utf8')
+  assert.match(passwordSource, /<template v-if="!auth\.isReadOnly">[\s\S]*保存用户名[\s\S]*<\/template>/)
+  assert.match(passwordSource, /@click="savePassword">保存密码<\/el-button>/)
+})

@@ -1,4 +1,6 @@
 using TelegramPanel.Web.Services;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace TelegramPanel.Web.Tests;
@@ -27,5 +29,48 @@ public sealed class PanelRolesTests
     public void Normalize_RejectsUnknownRole()
     {
         Assert.Throws<InvalidOperationException>(() => PanelRoles.Normalize("owner"));
+    }
+
+    [Fact]
+    public async Task Auditor_CanChangeOwnInitialPassword()
+    {
+        var called = false;
+        var context = CreateFilterContext("POST", "/api/panel/settings/password", PanelRoles.Auditor);
+
+        await PanelPermissionGuard.InvokeAsync(context, _ =>
+        {
+            called = true;
+            return ValueTask.FromResult<object?>(new object());
+        });
+
+        Assert.True(called);
+    }
+
+    [Fact]
+    public async Task Auditor_RemainsReadOnlyForOtherPostRequests()
+    {
+        var called = false;
+        var context = CreateFilterContext("POST", "/api/panel/channels", PanelRoles.Auditor);
+
+        await PanelPermissionGuard.InvokeAsync(context, _ =>
+        {
+            called = true;
+            return ValueTask.FromResult<object?>(new object());
+        });
+
+        Assert.False(called);
+    }
+
+    private static EndpointFilterInvocationContext CreateFilterContext(string method, string path, string role)
+    {
+        var http = new DefaultHttpContext();
+        http.Request.Method = method;
+        http.Request.Path = path;
+        http.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.Name, "test"),
+            new Claim(ClaimTypes.Role, role)
+        ], "test"));
+        return EndpointFilterInvocationContext.Create(http);
     }
 }

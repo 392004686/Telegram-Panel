@@ -43,7 +43,10 @@ public static class PanelPermissionGuard
         if (role == PanelRoles.Administrator)
             return await next(context);
 
-        if (role == PanelRoles.Auditor && !HttpMethods.IsGet(method) && !HttpMethods.IsHead(method))
+        if (role == PanelRoles.Auditor
+            && !HttpMethods.IsGet(method)
+            && !HttpMethods.IsHead(method)
+            && !IsAuditorCredentialSelfService(path, method))
             return Forbidden("只读审计员仅可查看数据");
 
         if (role == PanelRoles.Operator && IsAdministratorOnly(path, method))
@@ -69,6 +72,10 @@ public static class PanelPermissionGuard
             return true;
         return false;
     }
+
+    private static bool IsAuditorCredentialSelfService(string path, string method) =>
+        HttpMethods.IsPost(method)
+        && path.Equals("/api/panel/settings/password", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeClaimRole(string? role)
     {

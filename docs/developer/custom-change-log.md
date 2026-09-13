@@ -50,6 +50,24 @@
 - 验证：前端测试 `97/97`；构建通过；线上父级颜色为 `#1f6eea`，背景为 `#f0f5ff`。
 - 已部署镜像：`telegram-panel:multi-user-ui-20260913`，镜像 ID `sha256:f815d493ff7cea1005351a46670704a0ca2f0831cd22235cd1aa1e83b44158ac`。
 
+### 2026-09-13 只读账号首次改密与定制版标识隐藏
+
+- 允许只读审计账号调用 `POST /api/panel/settings/password` 修改自己的密码，使初次登录强制改密流程能够完成；其他非读取请求仍保持禁止。
+- 只读账号的密码安全页隐藏“修改用户名”区域，仅保留首次改密需要的表单。
+- Vue 主布局隐藏左上角版本号、新版本提示、版本弹窗、一键更新入口及作者仓库链接。
+- 旧版 Blazor 主布局同步隐藏版本、新版本提示和作者仓库入口，避免从兼容页面再次出现。
+- 作者更新检测与应用服务代码暂时保留，但当前 UI 不再提供入口；服务器继续使用 `TP_UPDATE_MODE=image` 和人工合并、构建、部署流程。
+- 修改文件：
+  - `src/TelegramPanel.Web/Services/PanelPermissionGuard.cs`
+  - `src/TelegramPanel.Web/Components/Layout/MainLayout.razor`
+  - `frontend/src/layouts/MainLayout.vue`
+  - `frontend/src/views/AdminPassword.vue`
+  - `tests/TelegramPanel.Web.Tests/PanelRolesTests.cs`
+  - `frontend/tests/mainLayoutMenu.test.mjs`
+  - `AGENTS.md`
+- 验证：前端测试 `99/99`；前端生产构建通过；后端新增“只读可改自己的密码”和“其他写操作仍拒绝”回归用例。
+- 部署镜像与线上验收结果在本次部署完成后补充。
+
 ## 上游升级检查清单
 
 ```bash
