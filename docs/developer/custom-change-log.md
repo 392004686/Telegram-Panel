@@ -98,6 +98,7 @@
 - Zip 导入增加“默认配置文件指纹（无配置时随机）”：逐账号读取 JSON 的 `app_version`、`device_model`、`system_version` 和语言字段并编码保存到账号 `DeviceProfileKey`；缺失字段稳定随机补齐，不新增数据库列。
 - 数据字典补充填写说明并新增视频字典；视频文件持久化到 `/data/uploads/dictionaries/`。组合字典暂不新增：后续自动任务由一条消息模板分别引用文本、图片或视频字典，保持各素材库可复用且避免组合重复。
 - 新增 `POST /api/panel/data-dictionaries/video`，支持 MP4/MOV/M4V/WEBM/MKV，单文件最大 200 MB。
+- 验收：前端测试 `104/104`、生产构建、后端 Release 构建（0 警告/0 错误）及相关后端测试 `10/10` 通过。已部署 `telegram-panel:multi-user-ui-85408c8`（镜像 ID `sha256:0bdb28f05dfcc98773d9ea50d41e17502c97269093e5b3beafc848dad5bdf86d`）；5000 端口容器 `running/healthy`，UI 和认证接口为 200，三项新 UI 标记均存在，凭据哈希不变，7000 端口作者版保持健康。
 - 重点冲突区域：`ChatResources.vue`、`Accounts.vue`、`AccountImport.vue`、`DataDictionaries.vue`、`PanelAdminApiEndpoints.cs`、`AccountImportService.cs`、`TelegramDeviceProfileCatalog.cs`、数据字典服务和资产存储服务。
 - 回滚：切回上一镜像不会删除已保存字典或素材；旧版会忽略视频字典和编码的导入画像。回滚前如需旧版继续连接这些账号，应在账号详情改为旧版可识别的内置画像。
 
