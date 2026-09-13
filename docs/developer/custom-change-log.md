@@ -86,7 +86,7 @@
 - 限制：文字 4096 字符、媒体说明 1024 字符、图片 20 MB、视频 200 MB；视频支持 MP4/MOV/M4V/WEBM/MKV。
 - 权限：管理员和运营员可发送，只读账号只可查看；无数据库迁移。
 - 重点冲突区域：`frontend/src/views/ChatResources.vue`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/Login.vue`、`src/TelegramPanel.Web/Api/PanelAdminApiEndpoints.cs`、`src/TelegramPanel.Core/Services/Telegram/AccountTelegramToolsService.cs`。
-- 验收：前端测试、生产构建、后端 Release 构建和云端容器验证；部署镜像与结果在本节完成部署后补记。
+- 验收：前端测试 `101/101`、生产构建、后端 Release 构建（0 警告/0 错误）及端点元数据测试 `4/4` 通过。`e1f9db5` 已部署为 `telegram-panel:multi-user-ui-e1f9db5`（镜像 ID `sha256:4e55a007d42c3cb789b450b64380c739cfaf6829dca8333092ad87ac7e939d83`）；容器 `running/healthy`，`/ui/` 与 `/api/panel/auth/me` 返回 200，编译资源包含 `Telegram X` 和“单次立即发送”，部署前后凭据文件 SHA-256 一致；作者版 7000 端口仍为 `running/healthy`。
 - 回滚：切回上一镜像会移除品牌和发送入口，但不会撤回已经发到 Telegram 的消息。
 
 ## 上游升级检查清单
@@ -107,3 +107,4 @@ git merge upstream/main
 - 使用新镜像灰度启动，保留旧镜像和数据备份后再正式切换。
 
 升级完成后，把“当前上游基线”更新为实际合并的提交，并追加升级提交、冲突文件、处理方式、测试输出和部署镜像 ID。
+
