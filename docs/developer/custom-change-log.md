@@ -111,6 +111,15 @@
 - 涉及文件：`frontend/src/views/Accounts.vue`、`frontend/src/styles/global.css`；修复时补充可渲染的浏览器回归或截图验证，不能只做源码正则测试。
 - 本项只记录问题，本次不修改运行镜像；当前线上仍为 `telegram-panel:multi-user-ui-85408c8`。
 
+### 待兼容：Zip JSON 的 `device` / `sdk` 指纹字段
+
+- 状态：**待下次修改**。当前导入指纹解析可直接读取示例 JSON 的 `app_version`、`system_lang_code`、`lang_code`，但不能读取该格式使用的 `device` 和 `sdk` 字段，因此当前会对设备型号和系统版本使用稳定随机补充值。
+- 下次增加兼容别名：`device` → WTelegram `device_model`，`sdk` → WTelegram `system_version`；继续保留 `device_model`/`deviceModel` 与 `system_version`/`systemVersion`。
+- 示例预期结果：`app_version=5.15.0 x64`、`device_model=ASUS ExpertBook B9`、`system_version=Windows 10`、`system_lang_code=en-us`、`lang_code=en`。
+- `lang_pack=tdesktop` 和 `system_lang_pack=en-us` 不直接映射到 WTelegram 的五个设备画像字段，避免把语言包标识误当成语言代码；原值仍留在导入源 JSON，不需要写入账号画像。
+- 验收用例：用包含 `app_id`、`app_hash`、`device`、`sdk` 的示例 JSON 调用 `BuildImportedProfileKey`，再解码并断言五项值完全等于上述预期；同时保留字段缺失时的稳定随机补齐测试。
+- 涉及文件：`src/TelegramPanel.Core/Services/Telegram/TelegramDeviceProfileCatalog.cs`、`tests/TelegramPanel.Web.Tests/TelegramDeviceProfileCatalogTests.cs`、`docs/guides/account-import.md`。
+
 ## 上游升级检查清单
 
 ```bash
