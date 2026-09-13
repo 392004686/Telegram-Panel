@@ -89,8 +89,6 @@
 - 验收：前端测试 `101/101`、生产构建、后端 Release 构建（0 警告/0 错误）及端点元数据测试 `4/4` 通过。`e1f9db5` 已部署为 `telegram-panel:multi-user-ui-e1f9db5`（镜像 ID `sha256:4e55a007d42c3cb789b450b64380c739cfaf6829dca8333092ad87ac7e939d83`）；容器 `running/healthy`，`/ui/` 与 `/api/panel/auth/me` 返回 200，编译资源包含 `Telegram X` 和“单次立即发送”，部署前后凭据文件 SHA-256 一致；作者版 7000 端口仍为 `running/healthy`。
 - 回滚：切回上一镜像会移除品牌和发送入口，但不会撤回已经发到 Telegram 的消息。
 
-## 上游升级检查清单
-
 ### 2026-09-13 混合发送、导入指纹与视频字典
 
 - 单次立即发送改为文字、图片、视频混合编辑；最多 10 个媒体。勾选“合并发送”时媒体作为同一个 Telegram 媒体组且文字作为说明，不勾选时按文字和文件顺序逐条发送。
@@ -101,6 +99,19 @@
 - 验收：前端测试 `104/104`、生产构建、后端 Release 构建（0 警告/0 错误）及相关后端测试 `10/10` 通过。已部署 `telegram-panel:multi-user-ui-85408c8`（镜像 ID `sha256:0bdb28f05dfcc98773d9ea50d41e17502c97269093e5b3beafc848dad5bdf86d`）；5000 端口容器 `running/healthy`，UI 和认证接口为 200，三项新 UI 标记均存在，凭据哈希不变，7000 端口作者版保持健康。
 - 重点冲突区域：`ChatResources.vue`、`Accounts.vue`、`AccountImport.vue`、`DataDictionaries.vue`、`PanelAdminApiEndpoints.cs`、`AccountImportService.cs`、`TelegramDeviceProfileCatalog.cs`、数据字典服务和资产存储服务。
 - 回滚：切回上一镜像不会删除已保存字典或素材；旧版会忽略视频字典和编码的导入画像。回滚前如需旧版继续连接这些账号，应在账号详情改为旧版可识别的内置画像。
+
+### 待修复：账号列表横向滚动时固定操作列内容穿透
+
+- 状态：**未修复**。上一版仅增加固定列背景和 `z-index`，线上复核后问题仍可复现；此前“操作按钮不再被遮挡”的验收结论作废。
+- 复现位置：工作台 → 账号列表；在桌面宽屏和出现横向滚动条的布局均可出现。
+- 复现步骤：进入账号列表，将底部横向滚动条向右拖动或把鼠标移到账号行；“Telegram 状态/日期”等非固定列内容会进入右侧固定“操作”列区域，覆盖刷新图标和更多操作按钮。截图中可看到日期文本与刷新图标重叠。
+- 预期：固定操作列始终使用不透明背景并裁剪其左侧滚动内容；滚动、悬停及表格阴影变化时，三个操作按钮都保持完整可见和可点击。
+- 下次排查重点：Element Plus 固定列的 `.el-table__fixed-right`、`.el-table-fixed-column--right`、固定列阴影伪元素和 body wrapper 的裁剪关系；不能只提高单元格 `z-index`。同时检查列宽总和、操作列宽度及浏览器缩放比例。
+- 验收矩阵：浏览器缩放 80%/100%/125%，窗口宽度 1280/1600/1920；分别在首列、横向滚动中间、最右端悬停每一行，确认滚动列文字不进入操作列，按钮不截断。
+- 涉及文件：`frontend/src/views/Accounts.vue`、`frontend/src/styles/global.css`；修复时补充可渲染的浏览器回归或截图验证，不能只做源码正则测试。
+- 本项只记录问题，本次不修改运行镜像；当前线上仍为 `telegram-panel:multi-user-ui-85408c8`。
+
+## 上游升级检查清单
 
 ```bash
 git fetch upstream --prune
