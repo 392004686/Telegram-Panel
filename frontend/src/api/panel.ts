@@ -85,6 +85,8 @@ import type {
   NumberPreset,
   NetworkEgress,
   OutboundProxy,
+  PanelRole,
+  PanelUser,
   ProxyBatchResult,
   ProxyImportRequest,
   SaveOutboundProxyRequest,
@@ -105,6 +107,15 @@ export const panelApi = {
   login: (username: string, password: string) =>
     api.post<AuthMe>('/auth/login', { username, password }).then((r) => r.data),
   logout: () => api.post<OperationResult>('/auth/logout').then((r) => r.data),
+  users: () => api.get<PanelUser[]>('/users').then((r) => r.data),
+  createUser: (payload: { username: string; password: string; role: PanelRole }) =>
+    api.post<PanelUser>('/users', payload).then((r) => r.data),
+  updateUser: (username: string, payload: { role: PanelRole; enabled: boolean }) =>
+    api.put<PanelUser>(`/users/${encodeURIComponent(username)}`, payload).then((r) => r.data),
+  resetUserPassword: (username: string, newPassword: string) =>
+    api.post<OperationResult>(`/users/${encodeURIComponent(username)}/reset-password`, { newPassword }).then((r) => r.data),
+  deleteUser: (username: string) =>
+    api.delete<OperationResult>(`/users/${encodeURIComponent(username)}`).then((r) => r.data),
 
   summary: () => api.get<DashboardSummary>('/summary').then((r) => r.data),
   networkEgress: () => api.get<NetworkEgress>('/network/egress').then((r) => r.data),

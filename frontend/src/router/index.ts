@@ -31,12 +31,13 @@ const routes: RouteRecordRaw[] = [
       { path: 'tasks', component: () => import('@/views/Tasks.vue'), meta: { title: '任务中心' } },
       { path: 'dictionaries', redirect: '/data-dictionaries' },
       { path: 'data-dictionaries', component: () => import('@/views/DataDictionaries.vue'), meta: { title: '数据字典' } },
-      { path: 'modules', component: () => import('@/views/Modules.vue'), meta: { title: '模块管理' } },
-      { path: 'apis', component: () => import('@/views/ApiCenter.vue'), meta: { title: 'API 管理' } },
+      { path: 'users', component: () => import('@/views/Users.vue'), meta: { title: '团队与权限', roles: ['admin'] } },
+      { path: 'modules', component: () => import('@/views/Modules.vue'), meta: { title: '模块管理', roles: ['admin'] } },
+      { path: 'apis', component: () => import('@/views/ApiCenter.vue'), meta: { title: 'API 管理', roles: ['admin'] } },
       { path: 'telegram-api', redirect: '/settings' },
-      { path: 'device-profiles', component: () => import('@/views/TelegramDeviceProfiles.vue'), meta: { title: '设备指纹' } },
+      { path: 'device-profiles', component: () => import('@/views/TelegramDeviceProfiles.vue'), meta: { title: '设备指纹', roles: ['admin'] } },
 
-      { path: 'settings', component: () => import('@/views/Settings.vue'), meta: { title: '系统设置' } },
+      { path: 'settings', component: () => import('@/views/Settings.vue'), meta: { title: '系统设置', roles: ['admin'] } },
       {
         path: 'ext/:moduleId/:pageKey',
         component: () => import('@/views/extensions/GenericModulePage.vue'),
@@ -70,6 +71,11 @@ router.beforeEach(async (to) => {
 
   if (auth.me?.authEnabled && auth.me.authenticated && auth.me.mustChangePassword && to.path !== '/admin/password') {
     return { path: '/admin/password', query: { returnUrl: to.fullPath } }
+  }
+
+  const roles = to.meta.roles as string[] | undefined
+  if (roles?.length && !roles.includes(auth.role)) {
+    return { path: '/dashboard', query: { reason: 'permission' } }
   }
 
   return true

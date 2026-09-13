@@ -1,7 +1,7 @@
 # 管理接口速查
 
 Vue 后台使用 `/api/panel` 下的管理接口。开启后台登录时，除登录等少数端点外都需要
-管理员 Cookie；这些接口不是面向公网的稳定开放 API。完整行为以
+后台用户 Cookie，并按管理员、运营人员、审计员三种角色鉴权；这些接口不是面向公网的稳定开放 API。完整行为以
 `PanelAdminApiEndpoints.cs` 和各功能 Endpoint 文件为准。
 
 ## 登录与账号
@@ -9,6 +9,16 @@ Vue 后台使用 `/api/panel` 下的管理接口。开启后台登录时，除�
 - `POST /api/panel/auth/login`：后台登录
 - `GET /api/panel/auth/me`：当前后台登录状态
 - `POST /api/panel/settings/username`：修改后台用户名
+
+### 后台成员与角色
+
+- `GET /api/panel/users`：列出成员；仅管理员。
+- `POST /api/panel/users`：创建成员，请求为 `{ username, password, role }`；仅管理员。
+- `PUT /api/panel/users/{username}`：修改角色与启用状态，请求为 `{ role, enabled }`；仅管理员。
+- `POST /api/panel/users/{username}/reset-password`：请求为 `{ newPassword }`；成功后成员下次登录需修改密码。
+- `DELETE /api/panel/users/{username}`：删除成员；当前用户及最后一名启用管理员不可删除。
+
+`GET /api/panel/auth/me` 返回 `role` 与 `permissions`。`admin` 具有 `read/operate/admin`，`operator` 具有 `read/operate`，`auditor` 只有 `read`。审计员非 GET/HEAD 请求，以及运营人员访问成员、模块、外部 API、核心设置、系统、删除或清理入口时，返回 HTTP 403 和 `code=PERMISSION_DENIED`。完整边界、迁移和回滚见[后台多用户与权限](../developer/multi-user-permissions.md)。
 - `GET /api/panel/accounts`：账号列表
 - `GET /api/panel/accounts/{id}`：账号详情
 - `POST /api/panel/accounts/import/zip`：导入 Telethon 或 TData 压缩包

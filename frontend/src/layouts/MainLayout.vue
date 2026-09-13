@@ -4,7 +4,11 @@
       <el-button link class="appbar-icon" @click="toggleMenu">
         <span class="material-icons">menu</span>
       </el-button>
-      <div class="app-title">Telegram Panel</div>
+      <div class="brand-mark"><span class="material-icons">send</span></div>
+      <div class="app-title">
+        <strong>Telegram Panel</strong>
+        <small>Operations Console</small>
+      </div>
       <el-tag
         v-if="version"
         size="small"
@@ -42,7 +46,10 @@
       <el-dropdown @command="onCommand">
         <span class="user-menu">
           <el-avatar :size="28">{{ auth.me?.username?.[0]?.toUpperCase() || 'A' }}</el-avatar>
-          <span v-if="!isMobile">{{ auth.me?.username || 'admin' }}</span>
+          <span v-if="!isMobile" class="user-identity">
+            <strong>{{ auth.me?.username || 'admin' }}</strong>
+            <small>{{ currentRoleLabel }}</small>
+          </span>
           <span class="material-icons user-arrow">keyboard_arrow_down</span>
         </span>
         <template #dropdown>
@@ -54,7 +61,11 @@
     </el-header>
 
     <el-container class="shell">
-      <el-aside v-if="!isEmbedMode && !isMobile" :width="collapsed ? '72px' : '256px'" class="aside">
+      <el-aside v-if="!isEmbedMode && !isMobile" :width="collapsed ? '76px' : '264px'" class="aside">
+      <div :class="['workspace-card', { compact: collapsed }]">
+        <span class="workspace-pulse" />
+        <div v-if="!collapsed"><strong>运营工作台</strong><small>所有服务运行正常</small></div>
+      </div>
       <el-menu
         :collapse="collapsed"
         :default-active="activeIndex"
@@ -115,7 +126,15 @@
 
     <el-container>
       <el-main class="main">
-        <div v-if="!isEmbedMode" class="page-title">{{ pageTitle }}</div>
+        <div v-if="!isEmbedMode" class="page-heading">
+          <div>
+            <div class="page-breadcrumb">工作台 / {{ pageTitle }}</div>
+            <h1>{{ pageTitle }}</h1>
+          </div>
+          <el-tag v-if="auth.isReadOnly" type="info" effect="plain" round>
+            <span class="material-icons role-lock">lock</span>只读模式
+          </el-tag>
+        </div>
         <router-view />
       </el-main>
     </el-container>
@@ -246,8 +265,8 @@ const pageTitle = computed(() => (route.meta.title as string) || '')
 const activeIndex = computed(() => (route.path === '/dictionaries' ? '/data-dictionaries' : route.path))
 const isEmbedMode = computed(() => route.query.embed === '1')
 const defaultOpeneds: string[] = []
-const menuTextColor = computed(() => (isDark.value ? '#c6cad4' : '#3f4b5b'))
-const menuActiveTextColor = computed(() => (isDark.value ? '#90caf9' : '#1976d2'))
+const menuTextColor = computed(() => (isDark.value ? '#c6d2e5' : '#44516a'))
+const menuActiveTextColor = computed(() => '#ffffff')
 const canApplyVersionUpdate = computed(() =>
   versionInfo.value?.success === true
   && versionInfo.value.enabled
@@ -260,6 +279,7 @@ interface MenuItem {
   label: string
   icon: string
   external?: boolean
+  roles?: string[]
   children?: MenuItem[]
 }
 
@@ -271,9 +291,9 @@ const staticMenuItems: MenuItem[] = [
     icon: 'account_circle',
     children: [
       { index: '/accounts', label: '账号列表', icon: 'people' },
-      { index: '/accounts/import', label: '导入账号', icon: 'upload' },
-      { index: '/accounts/login', label: '手动登录', icon: 'login' },
-      { index: '/accounts/categories', label: '账号分类', icon: 'category' },
+      { index: '/accounts/import', label: '导入账号', icon: 'upload', roles: ['admin', 'operator'] },
+      { index: '/accounts/login', label: '手动登录', icon: 'login', roles: ['admin', 'operator'] },
+      { index: '/accounts/categories', label: '账号分类', icon: 'category', roles: ['admin', 'operator'] },
     ],
   },
   { index: '/proxies', label: '代理管理', icon: 'vpn_lock' },
@@ -283,8 +303,8 @@ const staticMenuItems: MenuItem[] = [
     icon: 'campaign',
     children: [
       { index: '/channels', label: '频道列表', icon: 'list' },
-      { index: '/channels/create', label: '创建频道', icon: 'add' },
-      { index: '/channels/groups', label: '频道分类', icon: 'folder' },
+      { index: '/channels/create', label: '创建频道', icon: 'add', roles: ['admin', 'operator'] },
+      { index: '/channels/groups', label: '频道分类', icon: 'folder', roles: ['admin', 'operator'] },
     ],
   },
   {
@@ -293,8 +313,8 @@ const staticMenuItems: MenuItem[] = [
     icon: 'group',
     children: [
       { index: '/groups', label: '群组列表', icon: 'list' },
-      { index: '/groups/create', label: '创建群组', icon: 'add' },
-      { index: '/groups/categories', label: '群组分类', icon: 'folder' },
+      { index: '/groups/create', label: '创建群组', icon: 'add', roles: ['admin', 'operator'] },
+      { index: '/groups/categories', label: '群组分类', icon: 'folder', roles: ['admin', 'operator'] },
     ],
   },
   {
@@ -308,16 +328,20 @@ const staticMenuItems: MenuItem[] = [
   },
   { index: '/tasks', label: '任务中心', icon: 'assignment' },
   { index: '/data-dictionaries', label: '数据字典', icon: 'menu_book' },
-  { index: '/modules', label: '模块管理', icon: 'extension' },
-  { index: '/apis', label: 'API 管理', icon: 'link' },
-  { index: '/device-profiles', label: '设备指纹', icon: 'fingerprint' },
-
-  { index: '/settings', label: '系统设置', icon: 'settings' },
+  { index: '/users', label: '团队与权限', icon: 'manage_accounts', roles: ['admin'] },
+  { index: '/modules', label: '模块管理', icon: 'extension', roles: ['admin'] },
+  { index: '/apis', label: 'API 管理', icon: 'link', roles: ['admin'] },
+  { index: '/device-profiles', label: '设备指纹', icon: 'fingerprint', roles: ['admin'] },
+  { index: '/settings', label: '系统设置', icon: 'settings', roles: ['admin'] },
   { index: 'logout', label: '退出登录', icon: 'logout' },
 ]
 
 const menuItems = computed<MenuItem[]>(() => {
-  const items = [...staticMenuItems]
+  const currentRole = auth.role
+  const visible = (item: MenuItem) => !item.roles || item.roles.includes(currentRole)
+  const items = staticMenuItems
+    .filter(visible)
+    .map((item) => ({ ...item, children: item.children?.filter(visible) }))
   const mergedModuleItems = new Map<string, ModuleNavItem>()
 
   for (const item of moduleNavItems.value) {
@@ -334,7 +358,7 @@ const menuItems = computed<MenuItem[]>(() => {
       icon: resolveModuleIcon(item),
     }))
 
-  if (extensionChildren.length > 0) {
+  if (extensionChildren.length > 0 && auth.isAdmin) {
     const moduleIndex = items.findIndex((x) => x.index === '/modules')
     items.splice(moduleIndex + 1, 0, {
       index: 'extensions-group',
@@ -345,6 +369,12 @@ const menuItems = computed<MenuItem[]>(() => {
   }
 
   return items
+})
+
+const currentRoleLabel = computed(() => {
+  if (auth.role === 'admin') return '管理员'
+  if (auth.role === 'operator') return '运营人员'
+  return '只读审计'
 })
 
 function onResize() {

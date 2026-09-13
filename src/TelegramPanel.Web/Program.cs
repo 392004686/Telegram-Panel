@@ -559,6 +559,30 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         var returnUrlParam = options.ReturnUrlParameter;
         options.Events = new CookieAuthenticationEvents
         {
+            OnValidatePrincipal = async ctx =>
+            {
+                var store = ctx.HttpContext.RequestServices.GetRequiredService<AdminCredentialStore>();
+                await store.EnsureInitializedAsync(ctx.HttpContext.RequestAborted);
+                var profile = store.GetUserProfile(ctx.Principal?.Identity?.Name);
+                if (profile == null || !profile.Enabled)
+                {
+                    ctx.RejectPrincipal();
+                    await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    return;
+                }
+
+                var currentRole = ctx.Principal?.FindFirstValue(ClaimTypes.Role);
+                if (!string.Equals(currentRole, profile.Role, StringComparison.Ordinal))
+                {
+                    var identity = new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.Name, profile.Username),
+                        new Claim(ClaimTypes.Role, profile.Role)
+                    ], CookieAuthenticationDefaults.AuthenticationScheme);
+                    ctx.ReplacePrincipal(new ClaimsPrincipal(identity));
+                    ctx.ShouldRenew = true;
+                }
+            },
             OnRedirectToLogin = ctx =>
             {
                 var returnUrl = (ctx.Request.PathBase + ctx.Request.Path + ctx.Request.QueryString).ToString();
@@ -994,14 +1018,14 @@ app.MapPost("/login", async (HttpContext http, AdminCredentialStore credentialSt
     if (!AdminAuthHelpers.IsLocalReturnUrl(returnUrl))
         returnUrl = "/";
 
-    var ok = await credentialStore.ValidateAsync(u, p);
-    if (!ok)
+    var user = await credentialStore.AuthenticateAsync(u, p);
+    if (user == null)
         return Results.Redirect($"/login?error=1&returnUrl={Uri.EscapeDataString(returnUrl)}");
 
     var claims = new List<Claim>
     {
-        new(ClaimTypes.Name, u),
-        new(ClaimTypes.Role, "Admin")
+        new(ClaimTypes.Name, user.Username),
+        new(ClaimTypes.Role, user.Role)
     };
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     await http.SignInAsync(
@@ -1009,7 +1033,7 @@ app.MapPost("/login", async (HttpContext http, AdminCredentialStore credentialSt
         new ClaimsPrincipal(identity),
         new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30) });
 
-    if (credentialStore.MustChangePassword)
+    if (user.MustChangePassword)
         return Results.Redirect($"/admin/password?returnUrl={Uri.EscapeDataString(returnUrl)}");
 
     return Results.Redirect(returnUrl);
@@ -1052,7 +1076,7 @@ if (Directory.Exists(spaRoot))
 var razor = app.MapRazorComponents<TelegramPanel.Web.Components.App>()
     .AddInteractiveServerRenderMode();
 if (adminAuthEnabled)
-    razor.RequireAuthorization();
+    razor.RequireAuthorization(policy => policy.RequireRole(PanelRoles.Administrator));
 
 // 下载：导出账号 Zip（用于备份/迁移）
 var accountsZipDownload = app.MapGet("/downloads/accounts.zip", async (

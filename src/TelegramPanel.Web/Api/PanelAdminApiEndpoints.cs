@@ -48,20 +48,37 @@ public static class PanelAdminApiEndpoints
         api.MapGet("/auth/me", (HttpContext http, AdminCredentialStore credentialStore) =>
         {
             if (!credentialStore.Enabled)
-                return Results.Ok(new AuthMeDto(true, "admin", false, false, VersionService.Version));
+                return Results.Ok(new AuthMeDto(
+                    true,
+                    "admin",
+                    false,
+                    false,
+                    VersionService.Version,
+                    PanelRoles.Administrator,
+                    PanelRoles.Permissions(PanelRoles.Administrator)));
 
             var authenticated = http.User.Identity?.IsAuthenticated == true;
+            var profile = authenticated ? credentialStore.GetUserProfile(http.User.Identity?.Name) : null;
             return Results.Ok(new AuthMeDto(
                 authenticated,
                 authenticated ? http.User.Identity?.Name : null,
-                credentialStore.MustChangePassword,
+                profile?.MustChangePassword == true,
                 credentialStore.Enabled,
-                VersionService.Version));
+                VersionService.Version,
+                profile?.Role,
+                profile == null ? [] : PanelRoles.Permissions(profile.Role)));
         });
 
         var secured = api.MapGroup("");
         if (requireAdminAuth)
             secured.RequireAuthorization();
+        secured.AddEndpointFilter(PanelPermissionGuard.InvokeAsync);
+
+        secured.MapGet("/users", GetPanelUsersAsync);
+        secured.MapPost("/users", CreatePanelUserAsync);
+        secured.MapPut("/users/{username}", UpdatePanelUserAsync);
+        secured.MapPost("/users/{username}/reset-password", ResetPanelUserPasswordAsync);
+        secured.MapDelete("/users/{username}", DeletePanelUserAsync);
 
         secured.MapProxyManagementApi();
 
@@ -357,14 +374,14 @@ public static class PanelAdminApiEndpoints
 
         var username = (request.Username ?? string.Empty).Trim();
         var password = (request.Password ?? string.Empty).Trim();
-        var ok = await credentialStore.ValidateAsync(username, password, http.RequestAborted);
-        if (!ok)
+        var user = await credentialStore.AuthenticateAsync(username, password, http.RequestAborted);
+        if (user == null)
             return Results.Unauthorized();
 
         var claims = new List<Claim>
         {
-            new(ClaimTypes.Name, username),
-            new(ClaimTypes.Role, "Admin")
+            new(ClaimTypes.Name, user.Username),
+            new(ClaimTypes.Role, user.Role)
         };
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await http.SignInAsync(
@@ -372,7 +389,92 @@ public static class PanelAdminApiEndpoints
             new ClaimsPrincipal(identity),
             new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30) });
 
-        return Results.Ok(new AuthMeDto(true, username, credentialStore.MustChangePassword, credentialStore.Enabled, VersionService.Version));
+        return Results.Ok(new AuthMeDto(
+            true,
+            user.Username,
+            user.MustChangePassword,
+            credentialStore.Enabled,
+            VersionService.Version,
+            user.Role,
+            user.Permissions));
+    }
+
+    private static async Task<IResult> GetPanelUsersAsync(AdminCredentialStore credentialStore, CancellationToken cancellationToken) =>
+        Results.Ok(await credentialStore.ListUsersAsync(cancellationToken));
+
+    private static async Task<IResult> CreatePanelUserAsync(
+        CreatePanelUserRequestDto request,
+        AdminCredentialStore credentialStore,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Results.Ok(await credentialStore.CreateUserAsync(
+                request.Username,
+                request.Password,
+                request.Role,
+                cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new OperationResultDto(false, ex.Message));
+        }
+    }
+
+    private static async Task<IResult> UpdatePanelUserAsync(
+        string username,
+        UpdatePanelUserRequestDto request,
+        HttpContext http,
+        AdminCredentialStore credentialStore,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Results.Ok(await credentialStore.UpdateUserAsync(
+                http.User.Identity?.Name ?? string.Empty,
+                username,
+                request.Role,
+                request.Enabled,
+                cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new OperationResultDto(false, ex.Message));
+        }
+    }
+
+    private static async Task<IResult> ResetPanelUserPasswordAsync(
+        string username,
+        ResetPanelUserPasswordRequestDto request,
+        AdminCredentialStore credentialStore,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await credentialStore.ResetPasswordAsync(username, request.NewPassword, cancellationToken);
+            return Results.Ok(new OperationResultDto(true, "密码已重置，用户下次登录后需要修改密码"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new OperationResultDto(false, ex.Message));
+        }
+    }
+
+    private static async Task<IResult> DeletePanelUserAsync(
+        string username,
+        HttpContext http,
+        AdminCredentialStore credentialStore,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await credentialStore.DeleteUserAsync(http.User.Identity?.Name ?? string.Empty, username, cancellationToken);
+            return Results.Ok(new OperationResultDto(true, "用户已删除"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new OperationResultDto(false, ex.Message));
+        }
     }
 
     private static async Task<IResult> GetSummaryAsync(
@@ -3142,9 +3244,17 @@ public static class PanelAdminApiEndpoints
         return Results.Ok(new OperationResultDto(true, "缓存已清除"));
     }
 
-    private static async Task<IResult> ChangeAdminPasswordAsync(ChangeAdminPasswordRequestDto request, AdminCredentialStore credentialStore, CancellationToken cancellationToken)
+    private static async Task<IResult> ChangeAdminPasswordAsync(
+        ChangeAdminPasswordRequestDto request,
+        HttpContext http,
+        AdminCredentialStore credentialStore,
+        CancellationToken cancellationToken)
     {
-        await credentialStore.ChangePasswordAsync(request.CurrentPassword ?? "", request.NewPassword ?? "", cancellationToken);
+        await credentialStore.ChangePasswordAsync(
+            http.User.Identity?.Name ?? string.Empty,
+            request.CurrentPassword ?? "",
+            request.NewPassword ?? "",
+            cancellationToken);
         return Results.Ok(new OperationResultDto(true, "密码已修改"));
     }
 
@@ -3163,14 +3273,18 @@ public static class PanelAdminApiEndpoints
         }
 
         await credentialStore.ChangeUsernameAsync(
+            http.User.Identity?.Name ?? string.Empty,
             request.CurrentPassword ?? "",
             normalizedUsername,
             cancellationToken);
 
+        var profile = credentialStore.GetUserProfile(normalizedUsername)
+            ?? throw new InvalidOperationException("用户不存在");
+
         var claims = new List<Claim>
         {
-            new(ClaimTypes.Name, credentialStore.Username),
-            new(ClaimTypes.Role, "Admin")
+            new(ClaimTypes.Name, profile.Username),
+            new(ClaimTypes.Role, profile.Role)
         };
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await http.SignInAsync(
@@ -3181,13 +3295,17 @@ public static class PanelAdminApiEndpoints
         return Results.Ok(new OperationResultDto(true, "后台用户名已修改"));
     }
 
-    private static async Task<IResult> VerifyAdminPasswordAsync(VerifyAdminPasswordRequestDto request, AdminCredentialStore credentialStore, CancellationToken cancellationToken)
+    private static async Task<IResult> VerifyAdminPasswordAsync(
+        VerifyAdminPasswordRequestDto request,
+        HttpContext http,
+        AdminCredentialStore credentialStore,
+        CancellationToken cancellationToken)
     {
         var password = (request.Password ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(password))
             return Results.BadRequest(new OperationResultDto(false, "请输入后台密码"));
 
-        var ok = await credentialStore.ValidateAsync(credentialStore.Username, password, cancellationToken);
+        var ok = await credentialStore.ValidateAsync(http.User.Identity?.Name, password, cancellationToken);
         return Results.Ok(new OperationResultDto(ok, ok ? "校验通过" : "后台密码错误"));
     }
 
@@ -8198,7 +8316,17 @@ public static class PanelAdminApiEndpoints
 }
 
 public sealed record LoginRequestDto(string? Username, string? Password);
-public sealed record AuthMeDto(bool Authenticated, string? Username, bool MustChangePassword, bool AuthEnabled, string Version);
+public sealed record AuthMeDto(
+    bool Authenticated,
+    string? Username,
+    bool MustChangePassword,
+    bool AuthEnabled,
+    string Version,
+    string? Role,
+    IReadOnlyList<string> Permissions);
+public sealed record CreatePanelUserRequestDto(string? Username, string? Password, string? Role);
+public sealed record UpdatePanelUserRequestDto(string? Role, bool Enabled);
+public sealed record ResetPanelUserPasswordRequestDto(string? NewPassword);
 public sealed record OperationResultDto(bool Success, string? Message, string? Code = null);
 public sealed record SystemRestartResultDto(bool Success, string? Message, bool RestartScheduled);
 public sealed record PagedResultDto<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);

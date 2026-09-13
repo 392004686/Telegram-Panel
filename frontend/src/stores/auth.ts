@@ -7,6 +7,12 @@ export const useAuthStore = defineStore('auth', {
     me: null as AuthMe | null,
     loading: false,
   }),
+  getters: {
+    role: (state) => state.me?.role || 'auditor',
+    isAdmin: (state) => state.me?.role === 'admin' || state.me?.authEnabled === false,
+    canOperate: (state) => state.me?.permissions?.includes('operate') || state.me?.authEnabled === false,
+    isReadOnly: (state) => state.me?.authEnabled !== false && !state.me?.permissions?.includes('operate'),
+  },
   actions: {
     async fetchMe() {
       if (this.loading) return this.me

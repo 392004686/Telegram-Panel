@@ -4,6 +4,19 @@ export interface AuthMe {
   mustChangePassword: boolean
   authEnabled: boolean
   version?: string | null
+  role?: PanelRole | null
+  permissions: string[]
+}
+
+export type PanelRole = 'admin' | 'operator' | 'auditor'
+
+export interface PanelUser {
+  username: string
+  role: PanelRole
+  enabled: boolean
+  mustChangePassword: boolean
+  createdAtUtc: string
+  updatedAtUtc: string
 }
 
 export interface OperationResult {
