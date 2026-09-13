@@ -93,6 +93,30 @@ public sealed class PanelAdminApiEndpointMetadataTests
         Assert.NotNull(endpoint.Metadata.GetMetadata<IAuthorizeData>());
     }
 
+    [Fact]
+    public async Task InstantMessage_TransportLimitsAllowVideoUpload()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = "Testing"
+        });
+        await using var app = builder.Build();
+        PanelAdminApiEndpoints.ConfigureInstantMessageUploadLimits(
+            app.MapPost("/instant-message", () => "ok"));
+
+        var endpoint = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Single(item => string.Equals(item.RoutePattern.RawText, "/instant-message", StringComparison.Ordinal));
+        var requestLimit = endpoint.Metadata.GetMetadata<IRequestSizeLimitMetadata>();
+        var formLimits = endpoint.Metadata.GetMetadata<IFormOptionsMetadata>();
+
+        Assert.NotNull(requestLimit);
+        Assert.Equal(PanelAdminApiEndpoints.InstantMessageMaxRequestSize, requestLimit.MaxRequestBodySize);
+        Assert.NotNull(formLimits);
+        Assert.Equal(PanelAdminApiEndpoints.InstantMessageMaxRequestSize, formLimits.MultipartBodyLengthLimit);
+    }
+
     private sealed class MutableRequestSizeFeature
         : IHttpMaxRequestBodySizeFeature
     {

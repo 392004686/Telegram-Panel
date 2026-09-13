@@ -25,6 +25,12 @@ export interface OperationResult {
   code?: string | null
 }
 
+export interface InstantMessageResult {
+  success: boolean
+  message: string
+  messageId?: number | null
+}
+
 export interface ProxyBatchItem {
   proxyId: number
   success: boolean

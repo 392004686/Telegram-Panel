@@ -40,6 +40,7 @@ import type {
   ChatAdmin,
   ChannelListItem,
   OperationResult,
+  InstantMessageResult,
   ExternalApiCenter,
   ExternalApiDefinition,
   GroupDetail,
@@ -442,6 +443,8 @@ export const panelApi = {
   channelDetail: (id: number) => api.get<ChannelDetail>(`/channels/${id}`).then((r) => r.data),
   channelAdmins: (id: number) =>
     api.get<ChatAdmin[]>(`/channels/${id}/admins`, { timeout: 120_000 }).then((r) => r.data),
+  sendChannelMessage: (id: number, form: FormData) =>
+    api.post<InstantMessageResult>(`/channels/${id}/message`, form, { timeout: 300_000 }).then((r) => r.data),
   createChannel: (payload: {
     accountId: number
     groupId?: number | null
@@ -505,6 +508,8 @@ export const panelApi = {
   groupDetail: (id: number) => api.get<GroupDetail>(`/groups/${id}`).then((r) => r.data),
   groupAdmins: (id: number) =>
     api.get<ChatAdmin[]>(`/groups/${id}/admins`, { timeout: 120_000 }).then((r) => r.data),
+  sendGroupMessage: (id: number, form: FormData) =>
+    api.post<InstantMessageResult>(`/groups/${id}/message`, form, { timeout: 300_000 }).then((r) => r.data),
   kickGroupAdmin: (id: number, userId: number) =>
     api.post<OperationResult>(`/groups/${id}/admins/${userId}/kick`, {}, { timeout: 120_000 }).then((r) => r.data),
   createGroup: (payload: {

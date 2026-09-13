@@ -5,7 +5,7 @@
       <div class="story-orb orb-one" />
       <div class="story-orb orb-two" />
       <div class="story-content">
-        <div class="story-brand"><span class="material-icons">send</span><strong>Telegram Panel</strong></div>
+        <div class="story-brand"><span class="material-icons">send</span><strong>Telegram X</strong></div>
         <div class="story-copy">
           <div class="eyebrow">OPERATIONS CONSOLE</div>
           <h1>让每个账号、任务和结果<br><span>清晰可控。</span></h1>
@@ -20,7 +20,7 @@
 
     <section class="login-form-side">
       <div class="login-panel">
-        <div class="mobile-brand"><span class="material-icons">send</span>Telegram Panel</div>
+        <div class="mobile-brand"><span class="material-icons">send</span>Telegram X</div>
         <div class="login-heading">
           <span>欢迎回来</span>
           <h2>登录运营工作台</h2>

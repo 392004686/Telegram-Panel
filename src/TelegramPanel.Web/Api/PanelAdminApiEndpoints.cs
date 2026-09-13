@@ -30,6 +30,9 @@ public static class PanelAdminApiEndpoints
     private const string AccountRiskConfirmationRequiredCode = "ACCOUNT_RISK_CONFIRMATION_REQUIRED";
     internal const long AccountImportZipMaxFileSize = 200L * 1024 * 1024;
     internal const long AccountImportZipMaxRequestSize = AccountImportZipMaxFileSize + 1024 * 1024;
+    internal const long InstantMessageImageMaxFileSize = 20L * 1024 * 1024;
+    internal const long InstantMessageVideoMaxFileSize = 200L * 1024 * 1024;
+    internal const long InstantMessageMaxRequestSize = InstantMessageVideoMaxFileSize + 1024 * 1024;
 
     public static void MapPanelAdminApi(this WebApplication app, bool requireAdminAuth)
     {
@@ -178,6 +181,9 @@ public static class PanelAdminApiEndpoints
         secured.MapGet("/channels", GetChannelsPageAsync);
         secured.MapGet("/channels/{id:int}", GetChannelDetailAsync);
         secured.MapGet("/channels/{id:int}/admins", GetChannelAdminsAsync);
+        ConfigureInstantMessageUploadLimits(
+            secured.MapPost("/channels/{id:int}/message", SendChannelInstantMessageAsync)
+                .DisableAntiforgery());
         secured.MapPost("/channels", CreateChannelAsync);
         secured.MapPut("/channels/{id:int}", UpdateChannelAsync).DisableAntiforgery();
         secured.MapPatch("/channels/{id:int}/group", SetChannelGroupAsync);
@@ -202,6 +208,9 @@ public static class PanelAdminApiEndpoints
         secured.MapGet("/groups", GetGroupsPageAsync);
         secured.MapGet("/groups/{id:int}", GetGroupDetailAsync);
         secured.MapGet("/groups/{id:int}/admins", GetGroupAdminsAsync);
+        ConfigureInstantMessageUploadLimits(
+            secured.MapPost("/groups/{id:int}/message", SendGroupInstantMessageAsync)
+                .DisableAntiforgery());
         MapGroupAdminKickEndpoint(secured);
         secured.MapPost("/groups", CreateGroupAsync);
         secured.MapPut("/groups/{id:int}", UpdateGroupAsync).DisableAntiforgery();
@@ -397,6 +406,14 @@ public static class PanelAdminApiEndpoints
             VersionService.Version,
             user.Role,
             user.Permissions));
+    }
+
+    internal static RouteHandlerBuilder ConfigureInstantMessageUploadLimits(RouteHandlerBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        return builder
+            .WithMetadata(new RequestSizeLimitAttribute(InstantMessageMaxRequestSize))
+            .WithFormOptions(multipartBodyLengthLimit: InstantMessageMaxRequestSize);
     }
 
     private static async Task<IResult> GetPanelUsersAsync(AdminCredentialStore credentialStore, CancellationToken cancellationToken) =>
@@ -3421,6 +3438,128 @@ public static class PanelAdminApiEndpoints
 
         var admins = await groupService.GetAdminsAsync(accountId.Value, group.TelegramId);
         return Results.Ok(admins.Select(ToDto).ToList());
+    }
+
+    private static async Task<IResult> SendChannelInstantMessageAsync(
+        int id,
+        HttpRequest request,
+        ChannelManagementService channelManagement,
+        AccountTelegramToolsService accountTools,
+        CancellationToken cancellationToken)
+    {
+        var channel = await channelManagement.GetChannelAsync(id);
+        if (channel == null)
+            return Results.NotFound(new OperationResultDto(false, "频道不存在"));
+
+        var accountId = await ResolveInstantMessageAccountIdAsync(
+            request,
+            () => channelManagement.ResolveExecuteAccountIdAsync(channel));
+        return await SendInstantMessageAsync(
+            request,
+            accountId,
+            channel.TelegramId.ToString(CultureInfo.InvariantCulture),
+            accountTools,
+            cancellationToken);
+    }
+
+    private static async Task<IResult> SendGroupInstantMessageAsync(
+        int id,
+        HttpRequest request,
+        GroupManagementService groupManagement,
+        AccountTelegramToolsService accountTools,
+        CancellationToken cancellationToken)
+    {
+        var group = await groupManagement.GetGroupAsync(id);
+        if (group == null)
+            return Results.NotFound(new OperationResultDto(false, "群组不存在"));
+
+        var accountId = await ResolveInstantMessageAccountIdAsync(
+            request,
+            () => groupManagement.ResolveExecuteAccountIdAsync(group));
+        return await SendInstantMessageAsync(
+            request,
+            accountId,
+            group.TelegramId.ToString(CultureInfo.InvariantCulture),
+            accountTools,
+            cancellationToken);
+    }
+
+    private static async Task<int?> ResolveInstantMessageAccountIdAsync(
+        HttpRequest request,
+        Func<Task<int?>> resolveDefault)
+    {
+        var form = await request.ReadFormAsync(request.HttpContext.RequestAborted);
+        if (int.TryParse(form["accountId"].FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var requested)
+            && requested > 0)
+            return requested;
+        return await resolveDefault();
+    }
+
+    private static async Task<IResult> SendInstantMessageAsync(
+        HttpRequest request,
+        int? accountId,
+        string targetId,
+        AccountTelegramToolsService accountTools,
+        CancellationToken cancellationToken)
+    {
+        if (accountId is not > 0)
+            return Results.BadRequest(new OperationResultDto(false, "当前群组或频道暂无可用执行账号"));
+
+        var form = await request.ReadFormAsync(cancellationToken);
+        var messageType = (form["type"].FirstOrDefault() ?? "text").Trim().ToLowerInvariant();
+        var text = (form["text"].FirstOrDefault() ?? string.Empty).Trim();
+        var file = form.Files.GetFile("file");
+
+        if (messageType == "text" && text.Length == 0)
+            return Results.BadRequest(new OperationResultDto(false, "请输入消息内容"));
+        if (messageType == "text" && text.Length > 4096)
+            return Results.BadRequest(new OperationResultDto(false, "文字消息超过 Telegram 4096 字符限制"));
+        if (messageType is "image" or "video" && text.Length > 1024)
+            return Results.BadRequest(new OperationResultDto(false, "媒体说明文字超过 Telegram 1024 字符限制"));
+        if (messageType is "image" or "video" && file == null)
+            return Results.BadRequest(new OperationResultDto(false, messageType == "image" ? "请选择图片" : "请选择视频"));
+        if (messageType == "image" && file!.Length > InstantMessageImageMaxFileSize)
+            return Results.BadRequest(new OperationResultDto(false, "图片不能超过 20MB"));
+        if (messageType == "video" && file!.Length > InstantMessageVideoMaxFileSize)
+            return Results.BadRequest(new OperationResultDto(false, "视频不能超过 200MB"));
+        if (messageType == "image" && !(file!.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new OperationResultDto(false, "上传文件不是图片"));
+        if (messageType == "video" && !IsSupportedVideo(file!))
+            return Results.BadRequest(new OperationResultDto(false, "仅支持 MP4、MOV、M4V、WEBM 或 MKV 视频"));
+        if (messageType is not ("text" or "image" or "video"))
+            return Results.BadRequest(new OperationResultDto(false, "消息类型无效"));
+
+        var resolved = await accountTools.ResolveChatTargetAsync(accountId.Value, targetId, cancellationToken);
+        if (!resolved.Success || resolved.Target == null)
+            return Results.BadRequest(new OperationResultDto(false, resolved.Error ?? "执行账号无法访问目标"));
+
+        (bool Success, string? Error, int? MessageId) result;
+        if (messageType == "text")
+        {
+            result = await accountTools.SendMessageToResolvedChatAsync(
+                accountId.Value, resolved.Target, text, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            await using var stream = file!.OpenReadStream();
+            result = messageType == "image"
+                ? await accountTools.SendPhotoToResolvedChatAsync(
+                    accountId.Value, resolved.Target, stream, file.FileName, text, cancellationToken: cancellationToken)
+                : await accountTools.SendVideoToResolvedChatAsync(
+                    accountId.Value, resolved.Target, stream, file.FileName, text, cancellationToken);
+        }
+
+        return result.Success
+            ? Results.Ok(new InstantMessageResultDto(true, "消息发送成功", result.MessageId))
+            : Results.BadRequest(new InstantMessageResultDto(false, result.Error ?? "消息发送失败", result.MessageId));
+    }
+
+    private static bool IsSupportedVideo(IFormFile file)
+    {
+        var contentType = file.ContentType ?? string.Empty;
+        if (contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return Path.GetExtension(file.FileName).ToLowerInvariant() is ".mp4" or ".mov" or ".m4v" or ".webm" or ".mkv";
     }
 
     internal static async Task<IResult> KickGroupAdminAsync(
@@ -8316,6 +8455,7 @@ public static class PanelAdminApiEndpoints
 }
 
 public sealed record LoginRequestDto(string? Username, string? Password);
+public sealed record InstantMessageResultDto(bool Success, string Message, int? MessageId);
 public sealed record AuthMeDto(
     bool Authenticated,
     string? Username,

@@ -6,7 +6,7 @@
       </el-button>
       <div class="brand-mark"><span class="material-icons">send</span></div>
       <div class="app-title">
-        <strong>Telegram Panel</strong>
+        <strong>Telegram X</strong>
         <small>Operations Console</small>
       </div>
       <div class="appbar-spacer" />
@@ -72,7 +72,7 @@
     </el-aside>
 
     <el-drawer v-if="!isEmbedMode && isMobile" v-model="drawerOpen" direction="ltr" :with-header="false" size="256px">
-      <div class="mobile-title">Telegram Panel</div>
+      <div class="mobile-title">Telegram X</div>
       <el-menu
         :default-active="activeIndex"
         :default-openeds="defaultOpeneds"

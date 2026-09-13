@@ -78,6 +78,17 @@
 - 验证：作者版及定制版同时为 `running/healthy`；作者版 `/ui/` 与 `/api/panel/auth/me` 均返回 `200`。
 - 停用：`cd /opt/Telegram-Panel-author && docker compose stop`；彻底移除容器但保留数据：`docker compose down`。
 
+### 2026-09-13 Telegram X 品牌与详情单次发送
+
+- 左上角、移动端、登录页及浏览器标题由 `Telegram Panel` 调整为 `Telegram X`。
+- 群组与频道详情新增“单次立即发送”，支持文字、单张图片和单个视频，可自动选择或指定关联账号。
+- 新增 `POST /api/panel/channels/{id}/message` 与 `POST /api/panel/groups/{id}/message`；上传内容只用于本次 Telegram 发送，不写入素材字典或数据库。
+- 限制：文字 4096 字符、媒体说明 1024 字符、图片 20 MB、视频 200 MB；视频支持 MP4/MOV/M4V/WEBM/MKV。
+- 权限：管理员和运营员可发送，只读账号只可查看；无数据库迁移。
+- 重点冲突区域：`frontend/src/views/ChatResources.vue`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/Login.vue`、`src/TelegramPanel.Web/Api/PanelAdminApiEndpoints.cs`、`src/TelegramPanel.Core/Services/Telegram/AccountTelegramToolsService.cs`。
+- 验收：前端测试、生产构建、后端 Release 构建和云端容器验证；部署镜像与结果在本节完成部署后补记。
+- 回滚：切回上一镜像会移除品牌和发送入口，但不会撤回已经发到 Telegram 的消息。
+
 ## 上游升级检查清单
 
 ```bash

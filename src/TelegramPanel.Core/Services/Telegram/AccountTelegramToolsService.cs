@@ -1642,6 +1642,59 @@ public class AccountTelegramToolsService
         }
     }
 
+    /// <summary>
+    /// 向已解析的群组或频道目标发送视频，可附带纯文本 caption。
+    /// </summary>
+    public async Task<(bool Success, string? Error, int? MessageId)> SendVideoToResolvedChatAsync(
+        int accountId,
+        ResolvedChatTarget target,
+        Stream videoStream,
+        string fileName,
+        string? caption = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (videoStream == null)
+                return (false, "视频内容为空", null);
+
+            var text = (caption ?? string.Empty).Trim();
+            if (text.Length > 1024)
+                return (false, "视频说明文字超过 Telegram 1024 字符限制", null);
+
+            var uploadName = NormalizeUploadFileName(fileName, "video.mp4");
+            if (videoStream.CanSeek)
+                videoStream.Position = 0;
+
+            var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var uploaded = await client.UploadFileAsync(videoStream, uploadName);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var mimeType = Path.GetExtension(uploadName).ToLowerInvariant() switch
+            {
+                ".mov" => "video/quicktime",
+                ".webm" => "video/webm",
+                ".mkv" => "video/x-matroska",
+                _ => "video/mp4"
+            };
+            var sent = await client.SendMediaAsync(
+                target.Peer,
+                text.Length == 0 ? null : text,
+                uploaded,
+                mimeType);
+
+            return (true, null, sent.id);
+        }
+        catch (Exception ex)
+        {
+            var (summary, details) = MapTelegramException(ex);
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            return (false, msg, null);
+        }
+    }
+
     public async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate)> WaitForBotVerificationMessageAsync(
         int accountId,
         ResolvedChatTarget target,
@@ -2463,10 +2516,10 @@ public class AccountTelegramToolsService
         return ok;
     }
 
-    private static string NormalizeUploadFileName(string? fileName)
+    private static string NormalizeUploadFileName(string? fileName, string fallback = "image.jpg")
     {
         var name = Path.GetFileName((fileName ?? string.Empty).Trim());
-        return string.IsNullOrWhiteSpace(name) ? "image.jpg" : name;
+        return string.IsNullOrWhiteSpace(name) ? fallback : name;
     }
 
     private async Task<InputPeerUser?> TryResolveSystemPeerAsync(Client client)

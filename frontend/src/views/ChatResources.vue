@@ -158,6 +158,54 @@
         <el-descriptions-item label="简介">{{ detail.row.about || '-' }}</el-descriptions-item>
       </el-descriptions>
 
+      <el-divider content-position="left">单次立即发送</el-divider>
+      <el-alert v-if="!auth.canOperate" class="mb-3" type="info" :closable="false" show-icon title="只读账号仅可查看消息发送区域" />
+      <el-form v-else label-position="top" class="instant-message-form">
+        <el-form-item label="执行账号">
+          <el-select v-model="instantMessage.accountId" class="full">
+            <el-option :label="`自动选择（按${kindName}）`" :value="0" />
+            <el-option
+              v-for="account in detail.accounts"
+              :key="account.accountId"
+              :label="account.displayPhone || `账号 ${account.accountId}`"
+              :value="account.accountId"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="消息类型">
+          <el-radio-group v-model="instantMessage.type" @change="clearInstantFile">
+            <el-radio-button value="text">文字</el-radio-button>
+            <el-radio-button value="image">图片</el-radio-button>
+            <el-radio-button value="video">视频</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="instantMessage.type === 'text' ? '消息内容' : '说明文字（可选）'">
+          <el-input
+            v-model="instantMessage.text"
+            type="textarea"
+            :rows="3"
+            :maxlength="instantMessage.type === 'text' ? 4096 : 1024"
+            show-word-limit
+            :placeholder="instantMessage.type === 'text' ? '输入要立即发送的文字' : '输入随媒体发送的说明文字'"
+          />
+        </el-form-item>
+        <el-form-item v-if="instantMessage.type !== 'text'" :label="instantMessage.type === 'image' ? '图片文件' : '视频文件'">
+          <el-upload
+            v-model:file-list="instantMessage.files"
+            :auto-upload="false"
+            :limit="1"
+            :accept="instantMessage.type === 'image' ? 'image/*' : 'video/mp4,video/quicktime,video/webm,.m4v,.mkv'"
+            :on-exceed="replaceInstantFile"
+          >
+            <el-button>选择{{ instantMessage.type === 'image' ? '图片' : '视频' }}</el-button>
+            <template #tip>
+              <div class="el-upload__tip">单个文件，图片不超过 20 MB，视频不超过 200 MB。</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+        <el-button type="primary" :loading="instantMessage.sending" @click="sendInstantMessage">立即发送</el-button>
+      </el-form>
+
       <el-divider content-position="left">管理员</el-divider>
       <div class="toolbar compact mb-3">
         <el-button :icon="Refresh" :loading="detail.adminsLoading" :disabled="detail.adminKickLoadingGroupId !== null" @click="loadDetailAdmins">刷新</el-button>
@@ -518,7 +566,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type TableInstance, type UploadUserFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type TableInstance, type UploadRawFile, type UploadUserFile } from 'element-plus'
 import { ArrowDown, Delete, Edit, Folder, MoreFilled, Plus, Refresh, Select, View } from '@element-plus/icons-vue'
 import { panelApi } from '@/api/panel'
 import ColumnVisibilityMenu from '@/components/ColumnVisibilityMenu.vue'
@@ -527,6 +575,7 @@ import { formatTime } from '@/utils/format'
 import { writeClipboardText } from '@/utils/clipboard'
 import { usePersistentColumnVisibility, type ColumnVisibilityOption } from '@/utils/columnVisibility'
 import { useMediaQuery } from '@/utils/useMediaQuery'
+import { useAuthStore } from '@/stores/auth'
 
 type Kind = 'channel' | 'group'
 type Row = ChannelListItem | GroupListItem
@@ -534,6 +583,7 @@ type Row = ChannelListItem | GroupListItem
 const props = defineProps<{ kind: Kind }>()
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const kindName = computed(() => (props.kind === 'channel' ? '频道' : '群组'))
 const linkName = computed(() => (props.kind === 'channel' ? '邀请链接' : '加入链接'))
 
@@ -590,6 +640,13 @@ const detail = reactive({
   kickLoading: false,
   adminKickLoadingGroupId: null as number | null,
   adminKickLoadingUserId: null as number | null,
+})
+const instantMessage = reactive({
+  type: 'text' as 'text' | 'image' | 'video',
+  accountId: 0,
+  text: '',
+  files: [] as UploadUserFile[],
+  sending: false,
 })
 const systemAccounts = reactive({
   visible: false,
@@ -882,6 +939,10 @@ async function showDetails(row: Row) {
   detail.kickAccountId = filters.accountId > 0 ? filters.accountId : 0
   detail.kickTarget = ''
   detail.kickPermanent = false
+  instantMessage.type = 'text'
+  instantMessage.accountId = filters.accountId > 0 ? filters.accountId : 0
+  instantMessage.text = ''
+  instantMessage.files = []
   detail.visible = true
   detail.loading = true
   try {
@@ -900,6 +961,54 @@ async function showDetails(row: Row) {
     if (detail.row?.id === resourceId) detail.loading = false
   }
   await loadDetailAdmins(resourceId)
+}
+
+function clearInstantFile() {
+  instantMessage.files = []
+}
+
+function replaceInstantFile(files: UploadRawFile[]) {
+  const file = files.at(-1)
+  instantMessage.files = file ? [{ name: file.name, raw: file }] : []
+}
+
+async function sendInstantMessage() {
+  if (!detail.row) return
+  const text = instantMessage.text.trim()
+  if (instantMessage.type === 'text' && !text) {
+    ElMessage.warning('请输入消息内容')
+    return
+  }
+  const file = instantMessage.files[0]?.raw
+  if (instantMessage.type !== 'text' && !file) {
+    ElMessage.warning(`请选择${instantMessage.type === 'image' ? '图片' : '视频'}文件`)
+    return
+  }
+  const maxBytes = instantMessage.type === 'image' ? 20 * 1024 * 1024 : 200 * 1024 * 1024
+  if (file && file.size > maxBytes) {
+    ElMessage.warning(`${instantMessage.type === 'image' ? '图片' : '视频'}超过大小限制`)
+    return
+  }
+
+  const form = new FormData()
+  form.append('accountId', String(instantMessage.accountId))
+  form.append('type', instantMessage.type)
+  form.append('text', text)
+  if (file) form.append('file', file, file.name)
+
+  instantMessage.sending = true
+  try {
+    const result = props.kind === 'channel'
+      ? await panelApi.sendChannelMessage(detail.row.id, form)
+      : await panelApi.sendGroupMessage(detail.row.id, form)
+    ElMessage.success(result.message || '消息发送成功')
+    instantMessage.text = ''
+    instantMessage.files = []
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error))
+  } finally {
+    instantMessage.sending = false
+  }
 }
 
 function setSystemAccounts(items: ChatMembershipAccount[]) {
