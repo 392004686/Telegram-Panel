@@ -69,6 +69,15 @@
 - 已部署镜像：`telegram-panel:multi-user-ui-23047ec`，镜像 ID `sha256:5b1d494c478951fee4d3a9a0e7ddb5c75dcbddae1db9e7ef394ae7d59b89a673`。
 - 线上验收：容器 `running/healthy`；`/ui/` 与 `/api/panel/auth/me` 均返回 `200`；编译产物不存在作者仓库、版本弹窗及一键更新入口标记；部署前后 `admin_auth.json` SHA-256 一致。
 
+### 2026-09-13 作者版对比容器
+
+- 在服务器新增作者原版对比实例，容器名 `telegram-panel-author`，镜像 `ghcr.io/moeacgx/telegram-panel:latest`。
+- 宿主端口 `7000` 映射容器端口 `5000`；编排与独立数据目录位于 `/opt/Telegram-Panel-author/`。
+- 数据库、Session、后台凭据、配置、Docker 网络均与 `5000` 端口的定制版隔离，不共享任何业务数据。
+- 作者版设置为 `SelfUpdate__Mode=image`，更新通过该目录中的 `docker compose pull && docker compose up -d` 完成。
+- 验证：作者版及定制版同时为 `running/healthy`；作者版 `/ui/` 与 `/api/panel/auth/me` 均返回 `200`。
+- 停用：`cd /opt/Telegram-Panel-author && docker compose stop`；彻底移除容器但保留数据：`docker compose down`。
+
 ## 上游升级检查清单
 
 ```bash
