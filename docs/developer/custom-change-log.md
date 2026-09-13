@@ -120,6 +120,24 @@
 - 验收用例：用包含 `app_id`、`app_hash`、`device`、`sdk` 的示例 JSON 调用 `BuildImportedProfileKey`，再解码并断言五项值完全等于上述预期；同时保留字段缺失时的稳定随机补齐测试。
 - 涉及文件：`src/TelegramPanel.Core/Services/Telegram/TelegramDeviceProfileCatalog.cs`、`tests/TelegramPanel.Web.Tests/TelegramDeviceProfileCatalogTests.cs`、`docs/guides/account-import.md`。
 
+### 待优化：账号详情保留“导入配置文件指纹”选择状态
+
+- 状态：**待下次修改**。导入时选择“默认配置文件指纹（无配置时随机）”后，账号详情必须把该来源作为明确、可识别的当前选项，避免下拉框回显为 Windows 等内置画像后，用户保存备注或其他字段时误覆盖导入画像。
+- 当前代码仅在 `DeviceProfileKey` 已是 `imported-json:<编码内容>` 时动态插入“导入配置文件指纹”选项；线上截图仍回显“Windows 默认指纹”，需要同时核查该账号是否在功能部署前导入、导入请求是否实际提交 `imported-json`、服务端是否保存编码值，以及详情 DTO 是否原样返回。
+- 预期交互：下拉框常驻“导入配置文件指纹（来自 JSON）”选项；已有编码画像回显该选项并可查看五项只读摘要。编辑备注、二级密码等无关字段时，不应提交或改写设备画像；只有用户主动变更下拉选项后才更新 `DeviceProfileKey`。
+- 旧账号处理：若数据库中只有 `windows-default` 等内置 key，且原始导入 JSON 已不存在，则不能伪造恢复原画像；界面应明确显示当前实际画像。重新导入相同账号并选择配置文件指纹后才保存 JSON 画像。
+- 验收：导入示例 JSON 后打开详情显示“导入配置文件指纹”，仅修改备注并保存后编码 key 完全不变；主动切换内置画像才改变 key；刷新和重新登录后仍正确回显。
+- 涉及文件：`frontend/src/views/Accounts.vue`、账号详情更新 DTO/API、`TelegramDeviceProfileCatalog.cs` 及对应测试。
+
+### 待修复：新建任务表单说明文字与输入控件重叠
+
+- 状态：**待下次修改**。工作台 → 任务中心 → 新建任务中，多数帮助说明、字段标签、输入框、单选按钮和规则区域出现垂直间距不足，文字被下一个输入框边框遮挡；截图在“账号持续活跃”表单的任务名称、目标、发送动作、去重发送、回复链接和消息规则处均可复现。
+- 预期：每个字段形成独立纵向区块，标签、控件、帮助文字按顺序排列；帮助文字允许自动换行并撑高容器，不能使用覆盖后续控件的固定高度或负偏移。窄屏和长中文说明下也不得重叠。
+- 下次排查重点：任务动态配置表单的 `.el-form-item` 下边距、帮助文本 `line-height/white-space/position`、嵌套行列布局固定高度，以及全局 `.form-hint`/`.cell-sub` 样式；优先统一组件级布局，不逐字段添加临时 margin。
+- 验收矩阵：账号持续活跃及其他所有内置任务类型；窗口宽度 375/768/1280/1920，浏览器缩放 80%/100%/125%；逐项截图确认标签、输入框、帮助文字和按钮不交叠，文本完整可读，页面高度随内容增长。
+- 涉及文件：`frontend/src/views/Tasks.vue`、任务配置子组件及 `frontend/src/styles/global.css`；需要浏览器实际渲染截图验证，源码正则测试不作为完成依据。
+- 本项只记录问题，本次不修改运行镜像；当前线上仍为 `telegram-panel:multi-user-ui-85408c8`。
+
 ## 上游升级检查清单
 
 ```bash
