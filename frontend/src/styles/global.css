@@ -19,6 +19,8 @@
   --tp-menu-icon: #78869d;
   --tp-menu-active-text: #ffffff;
   --tp-menu-active-bg: linear-gradient(135deg, #2477f3, #4d9bff);
+  --tp-menu-parent-active: #1f6eea;
+  --tp-menu-parent-active-bg: #f0f5ff;
   --tp-menu-hover-bg: #eef4ff;
   --tp-table-row-hover-bg: rgba(0, 0, 0, 0.04);
   --tp-overlay: rgba(15, 23, 42, 0.28);
@@ -70,6 +72,8 @@ html.dark {
   --tp-menu-icon: #9da6b4;
   --tp-menu-active-text: #90caf9;
   --tp-menu-active-bg: rgba(144, 202, 249, 0.12);
+  --tp-menu-parent-active: #90caf9;
+  --tp-menu-parent-active-bg: rgba(144, 202, 249, 0.08);
   --tp-menu-hover-bg: rgba(144, 202, 249, 0.08);
   --tp-table-row-hover-bg: rgba(144, 202, 249, 0.08);
   --tp-overlay: rgba(18, 18, 18, 0.72);
@@ -289,10 +293,20 @@ html.dark .workspace-card small { color: #7f91ad; }
 }
 
 .menu .el-menu-item.is-active .menu-icon,
-.menu .el-menu-item.is-active span,
-.menu .el-sub-menu.is-active > .el-sub-menu__title .menu-icon,
-.menu .el-sub-menu.is-active > .el-sub-menu__title span {
+.menu .el-menu-item.is-active span {
   color: var(--tp-menu-active-text);
+}
+
+.menu .el-sub-menu.is-active > .el-sub-menu__title {
+  color: var(--tp-menu-parent-active) !important;
+  background: var(--tp-menu-parent-active-bg) !important;
+  font-weight: 650;
+}
+
+.menu .el-sub-menu.is-active > .el-sub-menu__title .menu-icon,
+.menu .el-sub-menu.is-active > .el-sub-menu__title span,
+.menu .el-sub-menu.is-active > .el-sub-menu__title .el-sub-menu__icon-arrow {
+  color: var(--tp-menu-parent-active) !important;
 }
 
 .el-menu--collapse .menu-icon {
