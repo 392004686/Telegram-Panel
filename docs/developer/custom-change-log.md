@@ -50,7 +50,7 @@
 - 验证：前端测试 `97/97`；构建通过；线上父级颜色为 `#1f6eea`，背景为 `#f0f5ff`。
 - 已部署镜像：`telegram-panel:multi-user-ui-20260913`，镜像 ID `sha256:f815d493ff7cea1005351a46670704a0ca2f0831cd22235cd1aa1e83b44158ac`。
 
-### 2026-09-13 只读账号首次改密与定制版标识隐藏
+### `23047ec` 只读账号首次改密与定制版标识隐藏
 
 - 允许只读审计账号调用 `POST /api/panel/settings/password` 修改自己的密码，使初次登录强制改密流程能够完成；其他非读取请求仍保持禁止。
 - 只读账号的密码安全页隐藏“修改用户名”区域，仅保留首次改密需要的表单。
@@ -66,7 +66,8 @@
   - `frontend/tests/mainLayoutMenu.test.mjs`
   - `AGENTS.md`
 - 验证：前端测试 `99/99`；前端生产构建通过；后端新增“只读可改自己的密码”和“其他写操作仍拒绝”回归用例。
-- 部署镜像与线上验收结果在本次部署完成后补充。
+- 已部署镜像：`telegram-panel:multi-user-ui-23047ec`，镜像 ID `sha256:5b1d494c478951fee4d3a9a0e7ddb5c75dcbddae1db9e7ef394ae7d59b89a673`。
+- 线上验收：容器 `running/healthy`；`/ui/` 与 `/api/panel/auth/me` 均返回 `200`；编译产物不存在作者仓库、版本弹窗及一键更新入口标记；部署前后 `admin_auth.json` SHA-256 一致。
 
 ## 上游升级检查清单
 
