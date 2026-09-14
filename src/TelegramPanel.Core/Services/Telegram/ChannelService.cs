@@ -426,6 +426,9 @@ public class ChannelService : IChannelService
 
     public async Task<InviteResult> InviteUserAsync(int accountId, long channelId, string username)
     {
+        username = (username ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(username))
+            return new InviteResult(username, false, "请输入用户名或手机号");
         var client = await GetOrCreateConnectedClientAsync(accountId);
 
         try
@@ -433,8 +436,8 @@ public class ChannelService : IChannelService
             var channel = await GetChannelByIdAsync(client, channelId)
                 ?? throw new InvalidOperationException($"Channel {channelId} not found");
 
-            var resolved = await client.Contacts_ResolveUsername(username);
-            await client.Channels_InviteToChannel(channel, new InputUser(resolved.User.id, resolved.User.access_hash));
+            var targetUser = await ResolveInviteUserAsync(client, username);
+            await client.Channels_InviteToChannel(channel, new InputUser(targetUser.id, targetUser.access_hash));
 
             _logger.LogInformation("Successfully invited @{Username} to channel {ChannelId}", username, channelId);
             return new InviteResult(username, true);
@@ -460,6 +463,31 @@ public class ChannelService : IChannelService
             _logger.LogError(ex, "Unexpected error inviting @{Username}", username);
             return new InviteResult(username, false, ex.Message);
         }
+    }
+
+    private static async Task<User> ResolveInviteUserAsync(Client client, string value)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.StartsWith('+') || normalized.All(char.IsDigit))
+        {
+            var phone = normalized.StartsWith('+') ? normalized : "+" + normalized;
+            var imported = await client.Contacts_ImportContacts([
+                new InputPhoneContact
+                {
+                    client_id = Random.Shared.NextInt64(),
+                    phone = phone,
+                    first_name = "Telegram",
+                    last_name = "Contact"
+                }
+            ]);
+            var user = imported.users.Values.FirstOrDefault();
+            if (user == null)
+                throw new InvalidOperationException("手机号未关联可邀请的 Telegram 用户，或对方隐私设置不允许通过手机号找到");
+            return user;
+        }
+
+        var resolved = await client.Contacts_ResolveUsername(normalized.TrimStart('@'));
+        return resolved.User;
     }
 
     public async Task<List<InviteResult>> BatchInviteUsersAsync(int accountId, long channelId, List<string> usernames, int delayMs = 2000)

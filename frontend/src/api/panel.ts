@@ -111,7 +111,7 @@ export const panelApi = {
   users: () => api.get<PanelUser[]>('/users').then((r) => r.data),
   createUser: (payload: { username: string; password: string; role: PanelRole }) =>
     api.post<PanelUser>('/users', payload).then((r) => r.data),
-  updateUser: (username: string, payload: { role: PanelRole; enabled: boolean }) =>
+  updateUser: (username: string, payload: { role: PanelRole; enabled: boolean; navigationItems?: string[] | null }) =>
     api.put<PanelUser>(`/users/${encodeURIComponent(username)}`, payload).then((r) => r.data),
   resetUserPassword: (username: string, newPassword: string) =>
     api.post<OperationResult>(`/users/${encodeURIComponent(username)}/reset-password`, { newPassword }).then((r) => r.data),

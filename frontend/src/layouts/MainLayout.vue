@@ -209,7 +209,17 @@ const staticMenuItems: MenuItem[] = [
 
 const menuItems = computed<MenuItem[]>(() => {
   const currentRole = auth.role
-  const visible = (item: MenuItem) => !item.roles || item.roles.includes(currentRole)
+  const allowedNavigation = auth.me?.navigationItems
+  const roleVisible = (item: MenuItem) => !item.roles || item.roles.includes(currentRole)
+  const navigationVisible = (item: MenuItem) => {
+    if (item.index === 'logout' || allowedNavigation == null || allowedNavigation.includes(item.index)) return true
+    if (item.index.startsWith('/accounts')) return allowedNavigation.includes('accounts-group')
+    if (item.index.startsWith('/channels')) return allowedNavigation.includes('channels-group')
+    if (item.index.startsWith('/groups')) return allowedNavigation.includes('groups-group')
+    if (item.index.startsWith('/bots')) return allowedNavigation.includes('bots-group')
+    return false
+  }
+  const visible = (item: MenuItem) => roleVisible(item) && navigationVisible(item)
   const items = staticMenuItems
     .filter(visible)
     .map((item) => ({ ...item, children: item.children?.filter(visible) }))

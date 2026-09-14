@@ -33,9 +33,14 @@ public sealed class ChannelInviteUsersTaskHandler : IModuleTaskHandler
                 if (channel == null)
                     return (null, "频道不存在");
 
-                return config.AccountId > 0
-                    ? (config.AccountId, null)
-                    : (await channelManagement.ResolveExecuteAccountIdAsync(channel), null);
+                if (config.AccountId > 0)
+                {
+                    var memberships = await channelManagement.GetChannelAccountMembershipsAsync(channel.Id, token);
+                    return memberships.Any(x => x.AccountId == config.AccountId)
+                        ? (config.AccountId, null)
+                        : (null, "轮询到的执行账号不在该频道中，已跳过本次邀请");
+                }
+                return (await channelManagement.ResolveExecuteAccountIdAsync(channel), null);
             },
             (accountId, target, username) => channelService.InviteUserAsync(accountId, target.TelegramId, username));
 
@@ -66,9 +71,14 @@ public sealed class GroupInviteUsersTaskHandler : IModuleTaskHandler
                 if (group == null)
                     return (null, "群组不存在");
 
-                return config.AccountId > 0
-                    ? (config.AccountId, null)
-                    : (await groupManagement.ResolveExecuteAccountIdAsync(group), null);
+                if (config.AccountId > 0)
+                {
+                    var memberships = await groupManagement.GetGroupAccountMembershipsAsync(group.Id, token);
+                    return memberships.Any(x => x.AccountId == config.AccountId)
+                        ? (config.AccountId, null)
+                        : (null, "轮询到的执行账号不在该群组中，已跳过本次邀请");
+                }
+                return (await groupManagement.ResolveExecuteAccountIdAsync(group), null);
             },
             (accountId, target, username) => groupService.InviteUserAsync(accountId, target.TelegramId, username));
 
@@ -274,11 +284,21 @@ internal sealed class BatchInviteTaskExecutor
                     var executorId = hasDefaultExecutor
                         ? accountPool[accountCursor++ % accountPool.Count]
                         : defaultExecutorId;
+                    var itemFailureReason = defaultFailureReason;
+                    if (executorId is > 0 && accountPoolRequested)
+                    {
+                        var originalAccountId = config.AccountId;
+                        config.AccountId = executorId.Value;
+                        var validated = await _resolveExecutor(target, config, cancellationToken);
+                        config.AccountId = originalAccountId;
+                        executorId = validated.ExecutorId;
+                        itemFailureReason = validated.Reason;
+                    }
 
                     if (executorId is not > 0)
                     {
                         failed++;
-                        failures.Add(BuildFailure(target, username, NormalizeReason(defaultFailureReason), executorId));
+                        failures.Add(BuildFailure(target, username, NormalizeReason(itemFailureReason), executorId));
                         completed++;
                         await _host.UpdateProgressAsync(completed, failed, cancellationToken);
                         await PersistConfigAsync(config, failures, cancellationToken);

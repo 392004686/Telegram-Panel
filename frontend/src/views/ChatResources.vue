@@ -157,20 +157,23 @@
         <el-descriptions-item label="最后同步">{{ formatTime(detail.row.syncedAt) }}</el-descriptions-item>
         <el-descriptions-item label="简介">{{ detail.row.about || '-' }}</el-descriptions-item>
       </el-descriptions>
+      <el-alert v-if="detail.adminsWarning" class="mt-3" type="warning" :closable="false" show-icon :title="detail.adminsWarning" />
 
       <el-divider content-position="left">单次立即发送</el-divider>
       <el-alert v-if="!auth.canOperate" class="mb-3" type="info" :closable="false" show-icon title="只读账号仅可查看消息发送区域" />
       <el-form v-else label-position="top" class="instant-message-form">
         <el-form-item label="执行账号">
-          <el-select v-model="instantMessage.accountId" class="full">
-            <el-option :label="`自动选择（按${kindName}）`" :value="0" />
+          <el-select v-model="instantMessage.accountId" class="full" filterable>
+            <el-option label="自动选择（优先创建者，其次可用管理员）" :value="0" />
             <el-option
               v-for="account in detail.accounts"
               :key="account.accountId"
-              :label="account.displayPhone || `账号 ${account.accountId}`"
+              :label="membershipAccountLabel(account)"
               :value="account.accountId"
+              :disabled="!isMembershipAccountUsable(account)"
             />
           </el-select>
+          <div class="form-hint no-offset">自动选择只会从已同步属于该{{ kindName }}的可用账号中选择；失效、冻结或受限账号不会参与执行。</div>
         </el-form-item>
         <el-alert class="mb-3" type="info" :closable="false" show-icon title="可同时填写文字并选择多张图片或多个视频；勾选合并发送时作为一条媒体组消息发送，不勾选则按文字、图片、视频顺序逐条发送。" />
         <el-form-item label="消息文字（可选）">
@@ -244,11 +247,16 @@
       </div>
       <el-table v-if="detail.accounts.length" :data="detail.accounts" stripe max-height="240">
         <el-table-column label="手机号" min-width="160">
-          <template #default="{ row }">{{ row.displayPhone || `账号 ${row.accountId}` }}</template>
+          <template #default="{ row }">{{ membershipAccountLabel(row, false) }}</template>
         </el-table-column>
         <el-table-column label="角色" width="110">
           <template #default="{ row }">
             <el-tag size="small" :type="roleTagType(row)">{{ row.isCreator ? '创建者' : row.isAdmin ? '管理员' : '成员' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="账号状态" min-width="150">
+          <template #default="{ row }">
+            <el-tag size="small" :type="isMembershipAccountUsable(row) ? 'success' : 'danger'">{{ membershipAccountStatus(row) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="最后同步" min-width="170">
@@ -287,13 +295,18 @@
       <div class="muted mb-3">共 {{ systemAccounts.accounts.length }} 个本系统账号</div>
       <el-table v-if="systemAccounts.accounts.length" :data="systemAccounts.accounts" stripe max-height="420">
         <el-table-column label="手机号" min-width="160">
-          <template #default="{ row }">{{ row.displayPhone || `账号 ${row.accountId}` }}</template>
+          <template #default="{ row }">{{ membershipAccountLabel(row, false) }}</template>
         </el-table-column>
         <el-table-column label="角色" width="110">
           <template #default="{ row }">
             <el-tag size="small" :type="roleTagType(row)">
               {{ row.isCreator ? '创建者' : row.isAdmin ? '管理员' : '成员' }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="账号状态" min-width="150">
+          <template #default="{ row }">
+            <el-tag size="small" :type="isMembershipAccountUsable(row) ? 'success' : 'danger'">{{ membershipAccountStatus(row) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="最后同步" min-width="170">
@@ -454,10 +467,10 @@
           <el-select v-model="channelInvite.accountCategoryId" class="full" filterable>
             <el-option v-for="category in accountCategoryOptions" :key="category.id" :label="category.label" :value="category.id" />
           </el-select>
-          <div class="muted mt-2">任务会在该分组的可操作账号中按顺序轮询，每次邀请切换一个账号。</div>
+          <div class="muted mt-2">任务会在该分组的可操作账号中按顺序轮询，每次邀请切换一个账号；轮询账号若不在当前群组/频道中，本次邀请会跳过并在任务失败明细中记录。</div>
         </el-form-item>
         <el-form-item label="用户名列表">
-          <el-input v-model="channelInvite.usernamesText" type="textarea" :rows="7" placeholder="每行一个 username 或 @username" />
+          <el-input v-model="channelInvite.usernamesText" type="textarea" :rows="7" placeholder="每行一个 @用户名、用户名或国际格式手机号（如 +12125551234）" />
         </el-form-item>
         <div class="preset-row">
           <el-input v-model="channelInvite.presetNameToSave" placeholder="保存当前用户名为预设组（名称）" />
@@ -628,6 +641,7 @@ const detail = reactive({
   accountsLoading: false,
   row: null as Row | null,
   admins: [] as ChatAdmin[],
+  adminsWarning: '',
   accounts: [] as ChatMembershipAccount[],
   kickAccountId: 0,
   kickTarget: '',
@@ -790,8 +804,27 @@ function debouncedLoad() {
 }
 
 function accountLabel(account: OperationAccount) {
-  const name = account.nickname || account.displayPhone
-  return account.username ? `#${account.displayNumber} ${name} (@${account.username})` : `#${account.displayNumber} ${name}`
+  const nickname = account.nickname ? `(${account.nickname})` : ''
+  const username = account.username ? `@${account.username}` : ''
+  const status = account.isActive && account.telegramStatusOk !== false ? '' : ` [${account.telegramStatusSummary || '失效'}]`
+  return `${account.displayPhone}${nickname}${username}${status}`
+}
+
+function isMembershipAccountUsable(account: ChatMembershipAccount) {
+  return account.isActive && account.telegramStatusOk !== false
+}
+
+function membershipAccountStatus(account: ChatMembershipAccount) {
+  if (!account.isActive) return '已停用'
+  if (account.telegramStatusOk === false) return account.telegramStatusSummary || 'Telegram 异常'
+  return account.telegramStatusSummary || '可用'
+}
+
+function membershipAccountLabel(account: ChatMembershipAccount, includeStatus = true) {
+  const nickname = account.nickname ? `(${account.nickname})` : ''
+  const username = account.username ? `@${account.username}` : ''
+  const status = includeStatus && !isMembershipAccountUsable(account) ? ` [${membershipAccountStatus(account)}]` : ''
+  return `${account.displayPhone || `账号 ${account.accountId}`}${nickname}${username}${status}`
 }
 
 function rowCategoryId(row: Row) {
@@ -928,6 +961,7 @@ async function showDetails(row: Row) {
   const resourceId = row.id
   detail.row = row
   detail.admins = []
+  detail.adminsWarning = ''
   detail.accounts = row.accounts.slice()
   detail.adminsLoading = false
   detail.accountsLoading = false
@@ -1012,14 +1046,24 @@ function showDetailSystemAccounts() {
 }
 
 async function loadDetailAdmins(expectedResourceId?: number) {
-  const resourceId = expectedResourceId ?? detail.row?.id
-  if (!resourceId) return
+  const resourceId = expectedResourceId || detail.row?.id
+  if (!resourceId || !detail.row || detail.adminsLoading) return
   detail.adminsLoading = true
+  detail.adminsWarning = ''
   try {
-    const admins = props.kind === 'channel'
+    const items = props.kind === 'channel'
       ? await panelApi.channelAdmins(resourceId)
       : await panelApi.groupAdmins(resourceId)
-    if (detail.row?.id === resourceId) detail.admins = admins
+    if (detail.row?.id === resourceId) detail.admins = items
+    if (detail.row?.id === resourceId && items.length === 0) {
+      const restricted = detail.accounts.find((item) => !isMembershipAccountUsable(item))
+      if (restricted) detail.adminsWarning = `管理员列表未取得：${membershipAccountStatus(restricted)}。群组详情和本系统账号仍可正常查看。`
+    }
+  } catch (error) {
+    if (detail.row?.id === resourceId) {
+      detail.admins = []
+      detail.adminsWarning = `管理员列表读取失败：${extractErrorMessage(error)}。群组详情和本系统账号仍可正常查看。`
+    }
   } finally {
     if (detail.row?.id === resourceId) detail.adminsLoading = false
   }

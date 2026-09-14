@@ -58,7 +58,8 @@ public static class PanelAdminApiEndpoints
                     false,
                     VersionService.Version,
                     PanelRoles.Administrator,
-                    PanelRoles.Permissions(PanelRoles.Administrator)));
+                    PanelRoles.Permissions(PanelRoles.Administrator),
+                    null));
 
             var authenticated = http.User.Identity?.IsAuthenticated == true;
             var profile = authenticated ? credentialStore.GetUserProfile(http.User.Identity?.Name) : null;
@@ -69,7 +70,8 @@ public static class PanelAdminApiEndpoints
                 credentialStore.Enabled,
                 VersionService.Version,
                 profile?.Role,
-                profile == null ? [] : PanelRoles.Permissions(profile.Role)));
+                profile == null ? [] : PanelRoles.Permissions(profile.Role),
+                profile?.NavigationItems));
         });
 
         var secured = api.MapGroup("");
@@ -407,7 +409,8 @@ public static class PanelAdminApiEndpoints
             credentialStore.Enabled,
             VersionService.Version,
             user.Role,
-            user.Permissions));
+            user.Permissions,
+            user.NavigationItems));
     }
 
     internal static RouteHandlerBuilder ConfigureInstantMessageUploadLimits(RouteHandlerBuilder builder)
@@ -454,6 +457,7 @@ public static class PanelAdminApiEndpoints
                 username,
                 request.Role,
                 request.Enabled,
+                request.NavigationItems,
                 cancellationToken));
         }
         catch (InvalidOperationException ex)
@@ -3438,8 +3442,16 @@ public static class PanelAdminApiEndpoints
         if (accountId is not > 0)
             return Results.BadRequest(new OperationResultDto(false, "该群组暂无可用执行账号（请先同步群组关联账号，或确保至少有一个账号是管理员）"));
 
-        var admins = await groupService.GetAdminsAsync(accountId.Value, group.TelegramId);
-        return Results.Ok(admins.Select(ToDto).ToList());
+        try
+        {
+            var admins = await groupService.GetAdminsAsync(accountId.Value, group.TelegramId);
+            return Results.Ok(admins.Select(ToDto).ToList());
+        }
+        catch (TL.RpcException ex) when (ex.Message.Contains("FROZEN_METHOD_INVALID", StringComparison.OrdinalIgnoreCase)
+                                         || ex.Message.Contains("USER_RESTRICTED", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Ok(Array.Empty<ChatAdminDto>());
+        }
     }
 
     private static async Task<IResult> SendChannelInstantMessageAsync(
@@ -6693,7 +6705,7 @@ public static class PanelAdminApiEndpoints
             task.CreatedAt,
             task.StartedAt,
             task.CompletedAt,
-            runtime?.Phase ?? task.RuntimePhase,
+            NormalizeRuntimePhase(task, runtime),
             runtime?.Message ?? task.RuntimeMessage,
             runtime?.HeartbeatAtUtc ?? task.HeartbeatAtUtc,
             task.RequiresAttention || (runtime?.RequiresAttention ?? false),
@@ -6714,11 +6726,20 @@ public static class PanelAdminApiEndpoints
             task.CreatedAt,
             task.StartedAt,
             task.CompletedAt,
-            runtime?.Phase ?? task.RuntimePhase,
+            NormalizeRuntimePhase(task, runtime),
             runtime?.Message ?? task.RuntimeMessage,
             runtime?.HeartbeatAtUtc ?? task.HeartbeatAtUtc,
             task.RequiresAttention || (runtime?.RequiresAttention ?? false),
             task.NextEligibleAtUtc);
+
+
+    private static string? NormalizeRuntimePhase(BatchTask task, ModuleTaskRuntimeState? runtime)
+    {
+        if (string.Equals(task.Status, "completed", StringComparison.OrdinalIgnoreCase)) return "completed";
+        if (string.Equals(task.Status, "failed", StringComparison.OrdinalIgnoreCase)) return "failed";
+        if (string.Equals(task.Status, "canceled", StringComparison.OrdinalIgnoreCase)) return "canceled";
+        return runtime?.Phase ?? task.RuntimePhase;
+    }
 
     private static async Task<IReadOnlyDictionary<int, ModuleTaskRuntimeState>> LoadRuntimeStatesAsync(
         IReadOnlyCollection<BatchTask> tasks,
@@ -6913,7 +6934,7 @@ public static class PanelAdminApiEndpoints
             channel.MemberCount);
 
     private static OperationAccountDto ToOperationAccountDto(Account account) =>
-        new(account.Id, account.DisplayNumber, account.DisplayPhone, account.Nickname, account.Username, account.IsActive, account.CategoryId, account.Category?.Name);
+        new(account.Id, account.DisplayNumber, account.DisplayPhone, account.Nickname, account.Username, account.IsActive, account.TelegramStatusOk, account.TelegramStatusSummary, account.CategoryId, account.Category?.Name);
 
     private static ChatAdminDto ToDto(ChannelAdminInfo admin) =>
         new(
@@ -6967,6 +6988,11 @@ public static class PanelAdminApiEndpoints
                 .Select(x => new ChatMembershipAccountDto(
                     x.AccountId,
                     x.Account?.DisplayPhone,
+                    x.Account?.Nickname,
+                    x.Account?.Username,
+                    x.Account?.IsActive ?? false,
+                    x.Account?.TelegramStatusOk,
+                    x.Account?.TelegramStatusSummary,
                     x.IsCreator,
                     x.IsAdmin,
                     x.SyncedAt))
@@ -6991,6 +7017,11 @@ public static class PanelAdminApiEndpoints
                 .Select(x => new ChatMembershipAccountDto(
                     x.AccountId,
                     x.Account?.DisplayPhone,
+                    x.Account?.Nickname,
+                    x.Account?.Username,
+                    x.Account?.IsActive ?? false,
+                    x.Account?.TelegramStatusOk,
+                    x.Account?.TelegramStatusSummary,
                     x.IsCreator,
                     x.IsAdmin,
                     x.SyncedAt))
@@ -7003,6 +7034,11 @@ public static class PanelAdminApiEndpoints
                 .Select(x => new ChatMembershipAccountDto(
                     x.AccountId,
                     x.Account?.DisplayPhone,
+                    x.Account?.Nickname,
+                    x.Account?.Username,
+                    x.Account?.IsActive ?? false,
+                    x.Account?.TelegramStatusOk,
+                    x.Account?.TelegramStatusSummary,
                     x.IsCreator,
                     x.IsAdmin,
                     x.SyncedAt))
@@ -7015,6 +7051,11 @@ public static class PanelAdminApiEndpoints
                 .Select(x => new ChatMembershipAccountDto(
                     x.AccountId,
                     x.Account?.DisplayPhone,
+                    x.Account?.Nickname,
+                    x.Account?.Username,
+                    x.Account?.IsActive ?? false,
+                    x.Account?.TelegramStatusOk,
+                    x.Account?.TelegramStatusSummary,
                     x.IsCreator,
                     x.IsAdmin,
                     x.SyncedAt))
@@ -8533,9 +8574,10 @@ public sealed record AuthMeDto(
     bool AuthEnabled,
     string Version,
     string? Role,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    IReadOnlyList<string>? NavigationItems);
 public sealed record CreatePanelUserRequestDto(string? Username, string? Password, string? Role);
-public sealed record UpdatePanelUserRequestDto(string? Role, bool Enabled);
+public sealed record UpdatePanelUserRequestDto(string? Role, bool Enabled, IReadOnlyList<string>? NavigationItems);
 public sealed record ResetPanelUserPasswordRequestDto(string? NewPassword);
 public sealed record OperationResultDto(bool Success, string? Message, string? Code = null);
 public sealed record SystemRestartResultDto(bool Success, string? Message, bool RestartScheduled);
@@ -9123,6 +9165,8 @@ public sealed record OperationAccountDto(
     string? Nickname,
     string? Username,
     bool IsActive,
+    bool? TelegramStatusOk,
+    string? TelegramStatusSummary,
     int? CategoryId,
     string? CategoryName);
 
@@ -9136,6 +9180,11 @@ public sealed record SimpleCategoryDto(
 public sealed record ChatMembershipAccountDto(
     int AccountId,
     string? DisplayPhone,
+    string? Nickname,
+    string? Username,
+    bool IsActive,
+    bool? TelegramStatusOk,
+    string? TelegramStatusSummary,
     bool IsCreator,
     bool IsAdmin,
     DateTime SyncedAt);

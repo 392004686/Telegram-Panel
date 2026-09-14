@@ -113,6 +113,12 @@
           </el-select>
           <div class="form-help">{{ roleDescription(editForm.role) }}</div>
         </el-form-item>
+        <el-form-item label="左侧导航栏功能">
+          <el-checkbox-group v-model="editForm.navigationItems" class="navigation-permission-grid">
+            <el-checkbox v-for="item in navigationOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
+          </el-checkbox-group>
+          <div class="form-help">仅控制该成员登录后显示的导航入口；接口操作权限仍由角色控制。留空表示不显示业务导航。</div>
+        </el-form-item>
         <el-form-item label="账号状态">
           <el-switch v-model="editForm.enabled" active-text="启用" inactive-text="停用" />
         </el-form-item>
@@ -156,7 +162,24 @@ const resetDialog = ref(false)
 const selected = ref<PanelUser | null>(null)
 const newPassword = ref('')
 const createForm = reactive({ username: '', password: '', role: 'operator' as PanelRole })
-const editForm = reactive({ role: 'operator' as PanelRole, enabled: true })
+const editForm = reactive({ role: 'operator' as PanelRole, enabled: true, navigationItems: [] as string[] })
+
+
+const navigationOptions = [
+  { value: '/dashboard', label: '仪表盘' },
+  { value: 'accounts-group', label: '账号管理' },
+  { value: '/proxies', label: '代理管理' },
+  { value: 'channels-group', label: '频道管理' },
+  { value: 'groups-group', label: '群组管理' },
+  { value: 'bots-group', label: '机器人管理' },
+  { value: '/tasks', label: '任务中心' },
+  { value: '/data-dictionaries', label: '数据字典' },
+  { value: '/modules', label: '模块管理' },
+  { value: '/apis', label: 'API 管理' },
+  { value: '/device-profiles', label: '设备指纹' },
+  { value: '/settings', label: '系统设置' },
+]
+const defaultNavigationItems = navigationOptions.map((item) => item.value)
 
 const roleCards: Array<{ value: PanelRole; label: string; icon: string; description: string }> = [
   { value: 'admin', label: '管理员', icon: 'admin_panel_settings', description: '完整系统配置、成员和业务管理权限' },
@@ -197,7 +220,7 @@ async function create() {
 
 function openEdit(user: PanelUser) {
   selected.value = user
-  Object.assign(editForm, { role: user.role, enabled: user.enabled })
+  Object.assign(editForm, { role: user.role, enabled: user.enabled, navigationItems: user.navigationItems == null ? [...defaultNavigationItems] : [...user.navigationItems] })
   editDialog.value = true
 }
 
@@ -308,4 +331,11 @@ onMounted(load)
 .role-selector :deep(.el-radio-button__inner) { width:100%; }
 .edit-member { padding:14px; margin-bottom:18px; border-radius:12px; background:var(--tp-surface); }
 @media (max-width:900px) { .role-grid { grid-template-columns:1fr; } .users-hero { align-items:flex-start; flex-direction:column; } }
+.navigation-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 6px 12px;
+}
+
 </style>

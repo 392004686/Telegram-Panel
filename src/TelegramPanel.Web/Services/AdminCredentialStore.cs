@@ -37,13 +37,15 @@ public sealed record PanelUserProfile(
     bool Enabled,
     bool MustChangePassword,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    IReadOnlyList<string>? NavigationItems);
 
 public sealed record PanelUserIdentity(
     string Username,
     string Role,
     bool MustChangePassword,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    IReadOnlyList<string>? NavigationItems);
 
 public sealed class AdminCredentialStore
 {
@@ -159,7 +161,7 @@ public sealed class AdminCredentialStore
         CancellationToken cancellationToken = default)
     {
         if (!Enabled)
-            return new PanelUserIdentity("admin", PanelRoles.Administrator, false, PanelRoles.Permissions(PanelRoles.Administrator));
+            return new PanelUserIdentity("admin", PanelRoles.Administrator, false, PanelRoles.Permissions(PanelRoles.Administrator), null);
 
         await EnsureInitializedAsync(cancellationToken);
         username = (username ?? string.Empty).Trim();
@@ -178,7 +180,8 @@ public sealed class AdminCredentialStore
                 user.Username,
                 PanelRoles.Normalize(user.Role),
                 user.MustChangePassword,
-                PanelRoles.Permissions(user.Role));
+                PanelRoles.Permissions(user.Role),
+                user.NavigationItems);
         }
         finally
         {
@@ -241,6 +244,7 @@ public sealed class AdminCredentialStore
         string targetUsername,
         string? role,
         bool enabled,
+        IReadOnlyList<string>? navigationItems,
         CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -257,6 +261,7 @@ public sealed class AdminCredentialStore
 
             user.Role = role;
             user.Enabled = enabled;
+            user.NavigationItems = NormalizeNavigationItems(navigationItems);
             user.UpdatedAtUtc = DateTime.UtcNow;
             await SaveAsync(file, cancellationToken);
             return ToProfile(user);
@@ -458,7 +463,18 @@ public sealed class AdminCredentialStore
         user.Enabled,
         user.MustChangePassword,
         user.CreatedAtUtc,
-        user.UpdatedAtUtc);
+        user.UpdatedAtUtc,
+        user.NavigationItems);
+
+    private static List<string>? NormalizeNavigationItems(IReadOnlyList<string>? items)
+    {
+        if (items == null) return null;
+        return items.Select(x => (x ?? string.Empty).Trim())
+            .Where(x => x.StartsWith('/') || x.EndsWith("-group", StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     private static void EnsureAdministratorRemains(AdminCredentialFile file, PanelUserCredential target, string nextRole, bool enabled)
     {
@@ -563,5 +579,6 @@ public sealed class AdminCredentialStore
         public bool MustChangePassword { get; set; } = true;
         public DateTime CreatedAtUtc { get; set; }
         public DateTime UpdatedAtUtc { get; set; }
+        public List<string>? NavigationItems { get; set; }
     }
 }

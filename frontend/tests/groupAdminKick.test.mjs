@@ -20,5 +20,5 @@ test('踢出管理员需确认，串行执行并只刷新发起操作的详情',
   assert.match(chatResourcesSource, /确定踢出管理员「\$\{admin\.displayName\}」吗？系统会先撤销管理员权限，再将其移出群组。/)
   assert.match(chatResourcesSource, /await panelApi\.kickGroupAdmin\(groupId, admin\.userId\)/)
   assert.match(chatResourcesSource, /await Promise\.allSettled\(\[\s*loadDetailAdmins\(groupId\),\s*loadDetailAccounts\(groupId\),/)
-  assert.match(chatResourcesSource, /if \(detail\.row\?\.id === resourceId\) detail\.admins = admins/)
+  assert.match(chatResourcesSource, /if \(detail\.row\?\.id === resourceId\) detail\.admins = items/)
 })

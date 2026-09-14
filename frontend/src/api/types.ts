@@ -6,6 +6,7 @@ export interface AuthMe {
   version?: string | null
   role?: PanelRole | null
   permissions: string[]
+  navigationItems?: string[] | null
 }
 
 export type PanelRole = 'admin' | 'operator' | 'auditor'
@@ -17,6 +18,7 @@ export interface PanelUser {
   mustChangePassword: boolean
   createdAtUtc: string
   updatedAtUtc: string
+  navigationItems?: string[] | null
 }
 
 export interface OperationResult {
@@ -954,6 +956,8 @@ export interface OperationAccount {
   nickname?: string | null
   username?: string | null
   isActive: boolean
+  telegramStatusOk?: boolean | null
+  telegramStatusSummary?: string | null
   categoryId?: number | null
   categoryName?: string | null
 }
@@ -969,6 +973,11 @@ export interface SimpleCategory {
 export interface ChatMembershipAccount {
   accountId: number
   displayPhone?: string | null
+  nickname?: string | null
+  username?: string | null
+  isActive: boolean
+  telegramStatusOk?: boolean | null
+  telegramStatusSummary?: string | null
   isCreator: boolean
   isAdmin: boolean
   syncedAt: string
