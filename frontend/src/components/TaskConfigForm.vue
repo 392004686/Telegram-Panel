@@ -1663,10 +1663,14 @@ const AvatarFields = defineComponent({
 }
 
 .form-hint {
-  margin: -8px 0 14px 96px;
+  display: block;
+  width: 100%;
+  margin: 8px 0 16px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.65;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .form-hint.no-offset {
@@ -1675,6 +1679,26 @@ const AvatarFields = defineComponent({
 
 .task-config-form {
   min-width: 0;
+}
+
+.task-config-form :deep(.el-form-item) {
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+
+.task-config-form :deep(.el-form-item__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.task-config-form :deep(.el-input),
+.task-config-form :deep(.el-select),
+.task-config-form :deep(.el-textarea),
+.task-config-form :deep(.el-radio-group) {
+  max-width: 100%;
 }
 .message-rule-section {
   margin-bottom: 14px;

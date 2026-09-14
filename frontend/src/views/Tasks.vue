@@ -1881,6 +1881,21 @@ onUnmounted(() => {
 :global(.task-dialog .el-dialog__body) {
   flex: 1 1 auto;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+:global(.task-dialog .el-form-item) {
+  margin-bottom: 22px;
+}
+
+:global(.task-dialog .el-alert) {
+  height: auto;
+}
+
+:global(.task-dialog .el-alert__title) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
 }
 
 :global(.task-dialog .el-dialog__footer) {

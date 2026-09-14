@@ -21,4 +21,12 @@ test('Zip 导入可复用配置文件设备指纹', () => {
 test('账号列表固定操作列在悬停时保持可见', () => {
   assert.match(accounts, /class="accounts-table"/)
   assert.match(accounts, /el-table__body tr:hover > \.el-table-fixed-column--right/)
+  assert.match(accounts, /el-table__inner-wrapper::after/)
+  assert.match(accounts, /z-index: 5 !important/)
+})
+
+test('账号详情回显导入 JSON 指纹且无关保存不提交指纹字段', () => {
+  assert.match(accounts, /导入配置文件指纹（来自 JSON）/)
+  assert.match(accounts, /JSON 指纹：应用/)
+  assert.match(accounts, /details\.deviceProfileChanged \? \{ deviceProfileKey:/)
 })

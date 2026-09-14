@@ -255,9 +255,13 @@
             </el-input>
           </el-form-item>
           <el-form-item label="设备指纹">
-            <el-select v-model="details.form.deviceProfileKey" class="full" filterable>
+            <el-select v-model="details.form.deviceProfileKey" class="full" filterable @change="details.deviceProfileChanged = true">
               <el-option label="跟随系统默认" value="" />
-              <el-option v-if="details.form.deviceProfileKey.startsWith('imported-json:')" label="导入配置文件指纹" :value="details.form.deviceProfileKey" />
+              <el-option
+                :label="details.form.deviceProfileKey.startsWith('imported-json:') ? '导入配置文件指纹（来自 JSON）' : '导入配置文件指纹（仅在导入时选择）'"
+                :value="details.form.deviceProfileKey.startsWith('imported-json:') ? details.form.deviceProfileKey : '__imported_json_unavailable__'"
+                :disabled="!details.form.deviceProfileKey.startsWith('imported-json:')"
+              />
               <el-option label="随机设备指纹" value="random" />
               <el-option
                 v-for="profileOption in deviceProfiles"
@@ -266,6 +270,7 @@
                 :value="profileOption.key"
               />
             </el-select>
+            <div v-if="importedDeviceProfileSummary" class="form-hint no-offset">{{ importedDeviceProfileSummary }}</div>
             <div class="form-hint no-offset">仅影响该账号后续 Telegram 客户端连接；留空时使用系统默认，选择随机时会按账号稳定选取画像。</div>
           </el-form-item>
         </el-form>
@@ -869,11 +874,27 @@ const details = reactive({
   showPassword: false,
   account: null as AccountDetail | null,
   loginEmailStatusText: '',
+  originalDeviceProfileKey: '',
+  deviceProfileChanged: false,
   form: {
     remark: '',
     twoFactorPassword: '',
     deviceProfileKey: '',
   },
+})
+
+const importedDeviceProfileSummary = computed(() => {
+  const key = details.form.deviceProfileKey
+  if (!key.startsWith('imported-json:')) return ''
+  try {
+    const encoded = key.slice('imported-json:'.length).replace(/-/g, '+').replace(/_/g, '/')
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')
+    const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0))
+    const values = JSON.parse(new TextDecoder().decode(bytes)) as string[]
+    return `JSON 指纹：应用 ${values[0]}；设备 ${values[1]}；系统 ${values[2]}；系统语言 ${values[3]}；客户端语言 ${values[4]}`
+  } catch {
+    return 'JSON 指纹已保存；摘要解析失败时保持原值，避免误覆盖。'
+  }
 })
 
 const profile = reactive({
@@ -1177,6 +1198,8 @@ async function openDetails(row: Row) {
     details.form.remark = account.remark || ''
     details.form.twoFactorPassword = account.twoFactorPassword || ''
     details.form.deviceProfileKey = account.deviceProfileKey || ''
+    details.originalDeviceProfileKey = account.deviceProfileKey || ''
+    details.deviceProfileChanged = false
   } finally {
     details.loading = false
   }
@@ -1198,7 +1221,7 @@ async function saveDetails() {
       remark: details.form.remark,
       twoFactorPassword: details.form.twoFactorPassword,
       categoryId: details.account.categoryId ?? null,
-      deviceProfileKey: details.form.deviceProfileKey,
+      ...(details.deviceProfileChanged ? { deviceProfileKey: details.form.deviceProfileKey } : {}),
     })
     ElMessage.success('账号详情已保存')
     details.visible = false
@@ -2291,11 +2314,32 @@ onMounted(async () => {
 .accounts-table :deep(.el-table-fixed-column--right),
 .accounts-table :deep(.el-table__fixed-right-patch) {
   background: var(--tp-panel) !important;
-  z-index: 3;
+  z-index: 5 !important;
 }
 
 .accounts-table :deep(.el-table__body tr:hover > .el-table-fixed-column--right) {
   background: var(--tp-table-row-hover-bg) !important;
+}
+
+/* Element Plus 的 sticky 固定列位于滚动表体之上，但单元格间隙仍可能透出长文本。
+   使用与操作列等宽的实体遮罩覆盖滚动层，再把固定列提升到遮罩上方。 */
+.accounts-table :deep(.el-table__inner-wrapper::after) {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: 0;
+  bottom: 12px;
+  width: 180px;
+  pointer-events: none;
+  background: var(--tp-panel);
+  border-left: 1px solid var(--tp-border);
+}
+
+@media (max-width: 640px) {
+  .accounts-table :deep(.el-table__inner-wrapper::after) {
+    width: 70px;
+  }
 }
 
 .ellipsis {

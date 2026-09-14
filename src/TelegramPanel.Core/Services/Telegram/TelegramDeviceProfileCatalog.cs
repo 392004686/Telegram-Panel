@@ -126,8 +126,8 @@ public static class TelegramDeviceProfileCatalog
         var values = new[]
         {
             Read(root, "app_version", "appVersion") ?? fallback.AppVersion,
-            Read(root, "device_model", "deviceModel") ?? fallback.DeviceModel,
-            Read(root, "system_version", "systemVersion") ?? fallback.SystemVersion,
+            Read(root, "device_model", "deviceModel", "device") ?? fallback.DeviceModel,
+            Read(root, "system_version", "systemVersion", "sdk") ?? fallback.SystemVersion,
             Read(root, "system_lang_code", "systemLangCode") ?? fallback.SystemLangCode,
             Read(root, "lang_code", "langCode") ?? fallback.LangCode
         };
@@ -154,6 +154,12 @@ public static class TelegramDeviceProfileCatalog
 
     public static bool TryNormalizeSelectableKey(IConfiguration configuration, string? key, out string? normalizedKey)
     {
+        var raw = (key ?? string.Empty).Trim();
+        if (TryDecodeImportedProfile(raw, out _))
+        {
+            normalizedKey = raw;
+            return true;
+        }
         var requested = NormalizeKey(key);
         if (string.IsNullOrWhiteSpace(requested))
         {
@@ -167,7 +173,7 @@ public static class TelegramDeviceProfileCatalog
             return true;
         }
 
-        if (requested == ImportedProfileKey || TryDecodeImportedProfile(requested, out _))
+        if (requested == ImportedProfileKey)
         {
             normalizedKey = requested;
             return true;

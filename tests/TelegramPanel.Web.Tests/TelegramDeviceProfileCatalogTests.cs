@@ -128,4 +128,20 @@ public sealed class TelegramDeviceProfileCatalogTests
         Assert.False(string.IsNullOrWhiteSpace(profile.SystemLangCode));
         Assert.False(string.IsNullOrWhiteSpace(profile.LangCode));
     }
+
+    [Fact]
+    public void ImportedDesktopJsonMapsDeviceAndSdkAliases()
+    {
+        using var document = JsonDocument.Parse("""
+            {"app_version":"5.15.0 x64","device":"ASUS ExpertBook B9","sdk":"Windows 10","system_lang_code":"en-us","lang_code":"en"}
+            """);
+        var key = TelegramDeviceProfileCatalog.BuildImportedProfileKey(document.RootElement, 2040, "+12102372683");
+        var profile = TelegramDeviceProfileCatalog.ResolveClientProfile(new ConfigurationBuilder().Build(), 2040, key, "ignored");
+
+        Assert.Equal("5.15.0 x64", profile.AppVersion);
+        Assert.Equal("ASUS ExpertBook B9", profile.DeviceModel);
+        Assert.Equal("Windows 10", profile.SystemVersion);
+        Assert.Equal("en-us", profile.SystemLangCode);
+        Assert.Equal("en", profile.LangCode);
+    }
 }

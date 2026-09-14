@@ -23,9 +23,10 @@ test('踢出设备失败时显示失败结果，成功后立即移除并刷新�
   assert.match(accountsSource, /await refreshDevicesAfterKick\(removedHashes\)/)
 })
 
-test('账号详情清空设备画像时提交空字符串', () => {
+test('账号详情仅在主动变更后提交设备画像且允许清空', () => {
   assert.match(accountsSource, /<el-option label="跟随系统默认" value="" \/>/)
-  assert.match(accountsSource, /deviceProfileKey: details\.form\.deviceProfileKey,/)
+  assert.match(accountsSource, /details\.deviceProfileChanged \? \{ deviceProfileKey: details\.form\.deviceProfileKey \} : \{\}/)
+  assert.match(accountsSource, /@change="details\.deviceProfileChanged = true"/)
   assert.doesNotMatch(accountsSource, /deviceProfileKey: details\.form\.deviceProfileKey \|\| null/)
 })
 

@@ -100,43 +100,40 @@
 - 重点冲突区域：`ChatResources.vue`、`Accounts.vue`、`AccountImport.vue`、`DataDictionaries.vue`、`PanelAdminApiEndpoints.cs`、`AccountImportService.cs`、`TelegramDeviceProfileCatalog.cs`、数据字典服务和资产存储服务。
 - 回滚：切回上一镜像不会删除已保存字典或素材；旧版会忽略视频字典和编码的导入画像。回滚前如需旧版继续连接这些账号，应在账号详情改为旧版可识别的内置画像。
 
-### 待修复：账号列表横向滚动时固定操作列内容穿透
+### 2026-09-14 修复账号列表固定列穿透
 
-- 状态：**未修复**。上一版仅增加固定列背景和 `z-index`，线上复核后问题仍可复现；此前“操作按钮不再被遮挡”的验收结论作废。
+- 状态：**已实现，待部署验收**。在表格内部增加与操作列等宽的不透明遮罩，并把固定列提升到遮罩上方；移动端遮罩宽度同步为 70px。
 - 复现位置：工作台 → 账号列表；在桌面宽屏和出现横向滚动条的布局均可出现。
 - 复现步骤：进入账号列表，将底部横向滚动条向右拖动或把鼠标移到账号行；“Telegram 状态/日期”等非固定列内容会进入右侧固定“操作”列区域，覆盖刷新图标和更多操作按钮。截图中可看到日期文本与刷新图标重叠。
 - 预期：固定操作列始终使用不透明背景并裁剪其左侧滚动内容；滚动、悬停及表格阴影变化时，三个操作按钮都保持完整可见和可点击。
-- 下次排查重点：Element Plus 固定列的 `.el-table__fixed-right`、`.el-table-fixed-column--right`、固定列阴影伪元素和 body wrapper 的裁剪关系；不能只提高单元格 `z-index`。同时检查列宽总和、操作列宽度及浏览器缩放比例。
+- 实现位置：`frontend/src/views/Accounts.vue` 的 `.el-table__inner-wrapper::after` 负责遮住滚动内容，`.el-table-fixed-column--right` 保持在遮罩上方；不再只依赖单元格背景。
 - 验收矩阵：浏览器缩放 80%/100%/125%，窗口宽度 1280/1600/1920；分别在首列、横向滚动中间、最右端悬停每一行，确认滚动列文字不进入操作列，按钮不截断。
 - 涉及文件：`frontend/src/views/Accounts.vue`、`frontend/src/styles/global.css`；修复时补充可渲染的浏览器回归或截图验证，不能只做源码正则测试。
-- 本项只记录问题，本次不修改运行镜像；当前线上仍为 `telegram-panel:multi-user-ui-85408c8`。
 
-### 待兼容：Zip JSON 的 `device` / `sdk` 指纹字段
+### 2026-09-14 兼容 Zip JSON 指纹别名
 
-- 状态：**待下次修改**。当前导入指纹解析可直接读取示例 JSON 的 `app_version`、`system_lang_code`、`lang_code`，但不能读取该格式使用的 `device` 和 `sdk` 字段，因此当前会对设备型号和系统版本使用稳定随机补充值。
-- 下次增加兼容别名：`device` → WTelegram `device_model`，`sdk` → WTelegram `system_version`；继续保留 `device_model`/`deviceModel` 与 `system_version`/`systemVersion`。
+- 状态：**已实现，待部署验收**。新增 `device` → `device_model`、`sdk` → `system_version` 别名，并保留原字段及驼峰字段。
 - 示例预期结果：`app_version=5.15.0 x64`、`device_model=ASUS ExpertBook B9`、`system_version=Windows 10`、`system_lang_code=en-us`、`lang_code=en`。
 - `lang_pack=tdesktop` 和 `system_lang_pack=en-us` 不直接映射到 WTelegram 的五个设备画像字段，避免把语言包标识误当成语言代码；原值仍留在导入源 JSON，不需要写入账号画像。
 - 验收用例：用包含 `app_id`、`app_hash`、`device`、`sdk` 的示例 JSON 调用 `BuildImportedProfileKey`，再解码并断言五项值完全等于上述预期；同时保留字段缺失时的稳定随机补齐测试。
 - 涉及文件：`src/TelegramPanel.Core/Services/Telegram/TelegramDeviceProfileCatalog.cs`、`tests/TelegramPanel.Web.Tests/TelegramDeviceProfileCatalogTests.cs`、`docs/guides/account-import.md`。
 
-### 待优化：账号详情保留“导入配置文件指纹”选择状态
+### 2026-09-14 账号详情保留导入指纹
 
-- 状态：**待下次修改**。导入时选择“默认配置文件指纹（无配置时随机）”后，账号详情必须把该来源作为明确、可识别的当前选项，避免下拉框回显为 Windows 等内置画像后，用户保存备注或其他字段时误覆盖导入画像。
+- 状态：**已实现，待部署验收**。编码画像回显“导入配置文件指纹（来自 JSON）”并展示五项摘要；其他账号显示禁用说明。
 - 当前代码仅在 `DeviceProfileKey` 已是 `imported-json:<编码内容>` 时动态插入“导入配置文件指纹”选项；线上截图仍回显“Windows 默认指纹”，需要同时核查该账号是否在功能部署前导入、导入请求是否实际提交 `imported-json`、服务端是否保存编码值，以及详情 DTO 是否原样返回。
-- 预期交互：下拉框常驻“导入配置文件指纹（来自 JSON）”选项；已有编码画像回显该选项并可查看五项只读摘要。编辑备注、二级密码等无关字段时，不应提交或改写设备画像；只有用户主动变更下拉选项后才更新 `DeviceProfileKey`。
+- 防误改：仅当用户主动触发设备指纹下拉框 `change` 时提交 `DeviceProfileKey`；编辑备注、二级密码等字段不会改写画像。服务端校验编码画像时保留 Base64URL 原始大小写。
 - 旧账号处理：若数据库中只有 `windows-default` 等内置 key，且原始导入 JSON 已不存在，则不能伪造恢复原画像；界面应明确显示当前实际画像。重新导入相同账号并选择配置文件指纹后才保存 JSON 画像。
 - 验收：导入示例 JSON 后打开详情显示“导入配置文件指纹”，仅修改备注并保存后编码 key 完全不变；主动切换内置画像才改变 key；刷新和重新登录后仍正确回显。
 - 涉及文件：`frontend/src/views/Accounts.vue`、账号详情更新 DTO/API、`TelegramDeviceProfileCatalog.cs` 及对应测试。
 
-### 待修复：新建任务表单说明文字与输入控件重叠
+### 2026-09-14 修复新建任务表单文字遮挡
 
-- 状态：**待下次修改**。工作台 → 任务中心 → 新建任务中，多数帮助说明、字段标签、输入框、单选按钮和规则区域出现垂直间距不足，文字被下一个输入框边框遮挡；截图在“账号持续活跃”表单的任务名称、目标、发送动作、去重发送、回复链接和消息规则处均可复现。
+- 状态：**已实现，待部署验收**。帮助文字独占整行并自然撑高，移除负上边距；动态表单字段统一下间距，内容允许换行，弹窗隐藏横向溢出。
 - 预期：每个字段形成独立纵向区块，标签、控件、帮助文字按顺序排列；帮助文字允许自动换行并撑高容器，不能使用覆盖后续控件的固定高度或负偏移。窄屏和长中文说明下也不得重叠。
 - 下次排查重点：任务动态配置表单的 `.el-form-item` 下边距、帮助文本 `line-height/white-space/position`、嵌套行列布局固定高度，以及全局 `.form-hint`/`.cell-sub` 样式；优先统一组件级布局，不逐字段添加临时 margin。
 - 验收矩阵：账号持续活跃及其他所有内置任务类型；窗口宽度 375/768/1280/1920，浏览器缩放 80%/100%/125%；逐项截图确认标签、输入框、帮助文字和按钮不交叠，文本完整可读，页面高度随内容增长。
 - 涉及文件：`frontend/src/views/Tasks.vue`、任务配置子组件及 `frontend/src/styles/global.css`；需要浏览器实际渲染截图验证，源码正则测试不作为完成依据。
-- 本项只记录问题，本次不修改运行镜像；当前线上仍为 `telegram-panel:multi-user-ui-85408c8`。
 
 ## 上游升级检查清单
 
