@@ -173,3 +173,9 @@ git merge upstream/main
 - 团队与权限编辑框增加左侧导航栏功能勾选；角色继续控制 API 操作权限，导航勾选仅控制登录后的入口显示。
 - Telegram MTProto 没有可直接读取账号“双方 Spam 状态”的官方方法；现有状态检测继续以会话、创建频道探测及实际 RPC 错误为依据。
 
+#### 本批次部署验证
+
+- 提交：`61b3fa3`；镜像：`telegram-panel:multi-user-ui-61b3fa3`；镜像 ID：`sha256:f45ecb695c591749d8c02cec2206c0177974d50d81259fd0f6a9c0e4eb09125d`。
+- 前端测试 110/110 通过，Vue TypeScript 与 Vite 生产构建通过；服务端 .NET 测试 531/531 通过；MkDocs strict 通过。
+- 5000 端口定制版与 7000 端口作者版均返回正常登录跳转。已实际回滚至 `telegram-panel:multi-user-ui-d57c57e` 验证，再恢复新镜像。
+
