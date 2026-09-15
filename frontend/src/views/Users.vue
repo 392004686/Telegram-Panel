@@ -168,7 +168,9 @@ const editForm = reactive({ role: 'operator' as PanelRole, enabled: true, naviga
 const navigationOptions = [
   { value: '/dashboard', label: '仪表盘' },
   { value: 'accounts-group', label: '账号管理' },
-  { value: '/customers', label: '客户管理' },
+  { value: 'customers-group', label: '客户管理' },
+  { value: '/customers', label: '客户列表' },
+  { value: '/customers/categories', label: '客户分类' },
   { value: '/proxies', label: '代理管理' },
   { value: 'channels-group', label: '频道管理' },
   { value: 'groups-group', label: '群组管理' },

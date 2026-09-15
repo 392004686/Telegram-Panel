@@ -17,6 +17,7 @@ import type {
   CustomerGroupOption,
   CustomerImportBatch,
   CustomerItem,
+  CustomerDetail,
   UserLookupResult,
   AuthMe,
   BatchTask,
@@ -561,11 +562,17 @@ export const panelApi = {
 
   customers: (params: { page: number; pageSize: number; search?: string; status?: string; groupId?: number; batchId?: number }) =>
     api.get<PagedResult<CustomerItem>>('/customers', { params }).then((r) => r.data),
+  customer: (id: number) => api.get<CustomerDetail>(`/customers/${id}`).then((r) => r.data),
   importCustomers: (payload: { values: string; batchName?: string; groupId?: number | null; newGroupName?: string; sourceName?: string }) =>
     api.post<{ success: boolean; batchId: number; total: number; imported: number; duplicates: number; invalid: number }>('/customers/import', payload).then((r) => r.data),
   deleteCustomer: (id: number) => api.delete<OperationResult>(`/customers/${id}`).then((r) => r.data),
+  lookupCustomer: (id: number, accountId: number) => api.post<UserLookupResult>(`/customers/${id}/lookup`, { accountId }, { timeout: 120_000 }).then((r) => r.data),
+  lookupNewCustomer: (query: string, accountId: number) => api.post<UserLookupResult>('/customers/lookup', { query, accountId }, { timeout: 120_000 }).then((r) => r.data),
+  batchCustomers: (ids: number[], action: 'delete' | 'set_group', groupId?: number | null) => api.post<{ success: boolean; affected: number }>('/customers/batch', { ids, action, groupId }).then((r) => r.data),
   customerGroups: () => api.get<CustomerGroupOption[]>('/customer-groups').then((r) => r.data),
   createCustomerGroup: (payload: { name: string; description?: string }) => api.post<CustomerGroupOption>('/customer-groups', payload).then((r) => r.data),
+  updateCustomerGroup: (id: number, payload: { name: string; description?: string }) => api.put<CustomerGroupOption>(`/customer-groups/${id}`, payload).then((r) => r.data),
+  deleteCustomerGroup: (id: number) => api.delete<OperationResult>(`/customer-groups/${id}`).then((r) => r.data),
   customerImportBatches: () => api.get<CustomerImportBatch[]>('/customer-import-batches').then((r) => r.data),
   lookupAccountUser: (accountId: number, query: string) => api.post<UserLookupResult>(`/accounts/${accountId}/user-lookup`, { query }, { timeout: 120_000 }).then((r) => r.data),
 

@@ -167,7 +167,10 @@ const staticMenuItems: MenuItem[] = [
       { index: '/accounts/categories', label: '账号分类', icon: 'category', roles: ['admin', 'operator'] },
     ],
   },
-  { index: '/customers', label: '客户管理', icon: 'contacts', roles: ['admin', 'operator'] },
+  { index: 'customers-group', label: '客户管理', icon: 'contacts', roles: ['admin', 'operator'], children: [
+    { index: '/customers', label: '客户列表', icon: 'people' },
+    { index: '/customers/categories', label: '客户分类', icon: 'category' },
+  ] },
   { index: '/proxies', label: '代理管理', icon: 'vpn_lock' },
   {
     index: 'channels-group',
@@ -215,6 +218,7 @@ const menuItems = computed<MenuItem[]>(() => {
   const navigationVisible = (item: MenuItem) => {
     if (item.index === 'logout' || allowedNavigation == null || allowedNavigation.includes(item.index)) return true
     if (item.index.startsWith('/accounts')) return allowedNavigation.includes('accounts-group')
+    if (item.index.startsWith('/customers')) return allowedNavigation.includes('customers-group') || allowedNavigation.includes('/customers')
     if (item.index.startsWith('/channels')) return allowedNavigation.includes('channels-group')
     if (item.index.startsWith('/groups')) return allowedNavigation.includes('groups-group')
     if (item.index.startsWith('/bots')) return allowedNavigation.includes('bots-group')

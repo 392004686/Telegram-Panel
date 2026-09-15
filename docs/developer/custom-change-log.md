@@ -191,3 +191,13 @@ git merge upstream/main
 - 部署验收（2026-09-15）：提交 `aeb683c` 已部署到 5000 端口，镜像 `telegram-panel:multi-user-ui-aeb683c`，镜像 ID `sha256:32dae79bd73b27ff95c74c848e75c3760fb81cd9398df9813ba998541e945ed5`。`/healthz`、`/ui/customers`、`/api/panel/auth/me` 均返回 HTTP 200；线上数据库已迁移至 `20260915090000_AddCustomerManagement` 并确认五张客户管理表存在。7000 端口作者版容器保持原镜像且健康。
 - 部署前完整数据备份：`/root/telegram-panel-data-20260915-095330.tar.gz`，SHA-256 `4924c5b8c71cc0bb407075a80da3958dce0ead942014f5f73e41d54f50c6995b`。保留上一镜像 `telegram-panel:multi-user-ui-61b3fa3` 作为运行回滚点。
 
+### 2026-09-15 客户管理界面对齐与查找入口迁移
+
+- 客户管理改为与账号管理一致的父子导航：客户列表、客户分类。
+- “手动查找用户是否存在”从账号加入群组弹窗移除，改为客户列表“查找用户”；支持选择可用执行账号，结果直接新增或更新客户档案。
+- 客户列表补齐查询状态、客户分类、导入批次和关键字筛选，增加复选、批量修改分类、批量删除、单行查询和查看详情。
+- 客户分类补齐新增、编辑、删除、描述和客户数量统计，不再只有导入时临时添加。
+- 新增客户详情、直接查询、已有客户查询、批量操作和客户分类增删改 API；无数据库结构变更。
+- 重点冲突区域：`Customers.vue`、`CustomerCategories.vue`、`MainLayout.vue`、`Users.vue`、`CustomerManagementApi.cs`。
+- 回滚：切回镜像 `telegram-panel:multi-user-ui-aeb683c`；新增 API 和界面消失，已存在客户及分类数据保持不变。
+

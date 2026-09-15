@@ -633,19 +633,6 @@
             <template #default="{ row }">{{ formatTime(row.syncedAt) }}</template>
           </el-table-column>
         </el-table>
-        <div v-if="listDialog.type === 'memberships' && listDialog.membershipScope === 'groups'" class="user-lookup-panel">
-          <div class="user-lookup-title">手动查找用户是否存在</div>
-          <div class="user-lookup-row">
-            <el-input v-model="userLookup.query" placeholder="输入国际格式手机号或 @用户名" clearable @keyup.enter="lookupUser" />
-            <el-button type="primary" :loading="userLookup.loading" @click="lookupUser">立即查询</el-button>
-          </div>
-          <el-alert v-if="userLookup.result" :type="userLookup.result.found ? 'success' : 'warning'" :closable="false" show-icon>
-            <template #title>{{ userLookup.result.found ? `已找到：${userLookup.result.displayName || '-'} ${userLookup.result.username ? '@' + userLookup.result.username : ''}` : (userLookup.result.error || '未找到') }}</template>
-            <div v-if="userLookup.result.found">User ID：{{ userLookup.result.userId }}；手机号：{{ userLookup.result.phone || '未返回' }}；受限：{{ userLookup.result.isRestricted ? '是' : '否' }}；Bot：{{ userLookup.result.isBot ? '是' : '否' }}</div>
-          </el-alert>
-          <div class="form-hint">此处只做单次能力测试，不写入客户管理。手机号未找到也可能是对方隐私设置限制。</div>
-        </div>
-
         <el-table v-else-if="listDialog.type === 'devices'" :data="listDialog.devices" stripe fit class="devices-table">
           <el-table-column label="当前" width="64" align="center">
             <template #default="{ row }"><el-tag :type="row.current ? 'success' : 'info'" size="small">{{ row.current ? '是' : '否' }}</el-tag></template>
@@ -1002,7 +989,6 @@ const listDialog = reactive({
   devices: [] as TelegramAuthorization[],
   messages: [] as TelegramSystemMessage[],
 })
-const userLookup = reactive({ query: '', loading: false, result: null as import('@/api/types').UserLookupResult | null })
 const listDialogWidth = computed(() => {
   if (listDialog.type === 'devices') return 'min(1080px, calc(100vw - 32px))'
   if (listDialog.type === 'memberships') return 'min(920px, calc(100vw - 32px))'
@@ -2246,13 +2232,6 @@ watch(filters, () => {
 onMounted(async () => {
   await Promise.all([loadCategories(), loadDictionaries(), loadProxies(), loadWarpStatus(), loadDeviceProfiles(), load()])
 })
-async function lookupUser() {
-  if (!userLookup.query.trim()) { ElMessage.warning('请输入手机号或 @用户名'); return }
-  userLookup.loading = true
-  userLookup.result = null
-  try { userLookup.result = await panelApi.lookupAccountUser(listDialog.accountId, userLookup.query.trim()) }
-  finally { userLookup.loading = false }
-}
 </script>
 
 <style scoped>
@@ -2381,8 +2360,6 @@ async function lookupUser() {
 .account-list-dialog :deep(.el-dialog__body) {
   overflow-x: hidden;
 }
-.user-lookup-panel{margin-top:18px;padding-top:16px;border-top:1px solid var(--el-border-color-lighter)}
-.user-lookup-title{font-weight:600;margin-bottom:10px}.user-lookup-row{display:flex;gap:10px;margin-bottom:10px}.user-lookup-row .el-input{flex:1}
 
 .devices-table {
   width: 100%;

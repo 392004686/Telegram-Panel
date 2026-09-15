@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TelegramPanel.Core.Services.Telegram;
 using TelegramPanel.Data;
 using TelegramPanel.Data.Entities;
 
@@ -9,10 +10,16 @@ public static class CustomerManagementApi
     public static void MapCustomerManagementApi(this RouteGroupBuilder api)
     {
         api.MapGet("/customers", ListAsync);
+        api.MapGet("/customers/{id:int}", DetailAsync);
         api.MapPost("/customers/import", ImportAsync);
+        api.MapPost("/customers/{id:int}/lookup", LookupAsync);
+        api.MapPost("/customers/lookup", LookupNewAsync);
+        api.MapPost("/customers/batch", BatchAsync);
         api.MapDelete("/customers/{id:int}", DeleteAsync);
         api.MapGet("/customer-groups", GroupsAsync);
         api.MapPost("/customer-groups", CreateGroupAsync);
+        api.MapPut("/customer-groups/{id:int}", UpdateGroupAsync);
+        api.MapDelete("/customer-groups/{id:int}", DeleteGroupAsync);
         api.MapGet("/customer-import-batches", BatchesAsync);
     }
 
@@ -73,15 +80,81 @@ public static class CustomerManagementApi
     }
 
     private static async Task<IResult> DeleteAsync(int id, AppDbContext db) { var item = await db.Customers.FindAsync(id); if (item == null) return Results.NotFound(); db.Customers.Remove(item); await db.SaveChangesAsync(); return Results.Ok(new { success = true }); }
-    private static async Task<IResult> GroupsAsync(AppDbContext db) => Results.Ok(await db.CustomerGroups.AsNoTracking().OrderBy(x => x.Name).Select(x => new NamedDto(x.Id, x.Name)).ToListAsync());
+    private static async Task<IResult> DetailAsync(int id, AppDbContext db)
+    {
+        var item = await db.Customers.AsNoTracking().Include(x => x.GroupAssignments).ThenInclude(x => x.CustomerGroup).Include(x => x.BatchItems).ThenInclude(x => x.CustomerImportBatch).FirstOrDefaultAsync(x => x.Id == id);
+        return item == null ? Results.NotFound() : Results.Ok(new CustomerDetailDto(item.Id, item.Phone, item.Username, item.TelegramUserId, item.AccessHash, item.DisplayName, item.LookupStatus, item.InteractionStatus, item.Remark, item.LastLookupAt, item.LastInteractionAt, item.CreatedAt, item.UpdatedAt, item.GroupAssignments.Select(x => new NamedDto(x.CustomerGroupId, x.CustomerGroup.Name)).ToList(), item.BatchItems.Select(x => new NamedDto(x.CustomerImportBatchId, x.CustomerImportBatch.Name)).ToList()));
+    }
+    private static async Task<IResult> LookupAsync(int id, CustomerLookupRequest request, AppDbContext db, AccountTelegramToolsService tools, CancellationToken cancellationToken)
+    {
+        var customer = await db.Customers.FindAsync([id], cancellationToken);
+        if (customer == null) return Results.NotFound();
+        var query = customer.Phone ?? (customer.Username == null ? string.Empty : $"@{customer.Username}");
+        var result = await tools.LookupUserAsync(request.AccountId, query, cancellationToken);
+        customer.LookupStatus = result.Found ? "found" : string.IsNullOrWhiteSpace(result.Error) ? "not_found" : "error";
+        customer.LastLookupAt = DateTime.UtcNow;
+        customer.UpdatedAt = DateTime.UtcNow;
+        if (result.Found)
+        {
+            customer.TelegramUserId = result.UserId; customer.AccessHash = result.AccessHash;
+            customer.Phone = string.IsNullOrWhiteSpace(result.Phone) ? customer.Phone : result.Phone;
+            customer.Username = string.IsNullOrWhiteSpace(result.Username) ? customer.Username : result.Username;
+            customer.DisplayName = result.DisplayName;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(result);
+    }
+    private static async Task<IResult> LookupNewAsync(CustomerDirectLookupRequest request, AppDbContext db, AccountTelegramToolsService tools, CancellationToken cancellationToken)
+    {
+        var query = request.Query.Trim();
+        if (query.Length == 0) return Results.BadRequest(new { message = "请输入手机号或 @用户名" });
+        var normalizedPhone = query.StartsWith('+') ? new string(query.Where(x => char.IsDigit(x) || x == '+').ToArray()) : null;
+        var normalizedUsername = normalizedPhone == null ? query.TrimStart('@').ToLowerInvariant() : null;
+        var customer = await db.Customers.FirstOrDefaultAsync(x => (normalizedPhone != null && x.Phone == normalizedPhone) || (normalizedUsername != null && x.Username == normalizedUsername), cancellationToken);
+        if (customer == null)
+        {
+            customer = new Customer { Phone = normalizedPhone, Username = normalizedUsername };
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return await LookupAsync(customer.Id, new CustomerLookupRequest(request.AccountId), db, tools, cancellationToken);
+    }
+    private static async Task<IResult> BatchAsync(CustomerBatchRequest request, AppDbContext db, CancellationToken cancellationToken)
+    {
+        var ids = request.Ids.Distinct().ToArray();
+        if (ids.Length == 0) return Results.BadRequest(new { message = "请选择客户" });
+        var customers = await db.Customers.Include(x => x.GroupAssignments).Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (request.Action == "delete") db.Customers.RemoveRange(customers);
+        else if (request.Action == "set_group")
+        {
+            var group = request.GroupId.HasValue ? await db.CustomerGroups.FindAsync([request.GroupId.Value], cancellationToken) : null;
+            if (request.GroupId.HasValue && group == null) return Results.BadRequest(new { message = "客户分类不存在" });
+            foreach (var customer in customers)
+            {
+                db.CustomerGroupAssignments.RemoveRange(customer.GroupAssignments);
+                if (group != null) db.CustomerGroupAssignments.Add(new CustomerGroupAssignment { CustomerId = customer.Id, CustomerGroupId = group.Id });
+            }
+        }
+        else return Results.BadRequest(new { message = "不支持的批量操作" });
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(new { success = true, affected = customers.Count });
+    }
+    private static async Task<IResult> GroupsAsync(AppDbContext db) => Results.Ok(await db.CustomerGroups.AsNoTracking().OrderBy(x => x.Name).Select(x => new CustomerGroupDto(x.Id, x.Name, x.Description, x.Assignments.Count)).ToListAsync());
     private static async Task<IResult> CreateGroupAsync(CreateCustomerGroupRequest request, AppDbContext db) { var name = request.Name.Trim(); if (name.Length == 0) return Results.BadRequest(); var item = new CustomerGroup { Name = name, Description = request.Description }; db.CustomerGroups.Add(item); await db.SaveChangesAsync(); return Results.Ok(new NamedDto(item.Id, item.Name)); }
+    private static async Task<IResult> UpdateGroupAsync(int id, CreateCustomerGroupRequest request, AppDbContext db) { var item = await db.CustomerGroups.FindAsync(id); if (item == null) return Results.NotFound(); item.Name = request.Name.Trim(); item.Description = request.Description; await db.SaveChangesAsync(); return Results.Ok(new NamedDto(item.Id, item.Name)); }
+    private static async Task<IResult> DeleteGroupAsync(int id, AppDbContext db) { var item = await db.CustomerGroups.FindAsync(id); if (item == null) return Results.NotFound(); db.CustomerGroups.Remove(item); await db.SaveChangesAsync(); return Results.Ok(new { success = true }); }
     private static async Task<IResult> BatchesAsync(AppDbContext db) => Results.Ok(await db.CustomerImportBatches.AsNoTracking().OrderByDescending(x => x.Id).Select(x => new CustomerBatchDto(x.Id, x.Name, x.Total, x.Imported, x.Duplicates, x.Invalid, x.CreatedAt)).ToListAsync());
 
     public sealed record CustomerImportRequest(string Values, string? BatchName, int? GroupId, string? NewGroupName, string? SourceName);
     public sealed record CreateCustomerGroupRequest(string Name, string? Description);
+    public sealed record CustomerLookupRequest(int AccountId);
+    public sealed record CustomerDirectLookupRequest(int AccountId, string Query);
+    public sealed record CustomerBatchRequest(List<int> Ids, string Action, int? GroupId);
     public sealed record NamedDto(int Id, string Name);
+    public sealed record CustomerGroupDto(int Id, string Name, string? Description, int CustomerCount);
     public sealed record CustomerBatchDto(int Id, string Name, int Total, int Imported, int Duplicates, int Invalid, DateTime CreatedAt);
     public sealed record CustomerDto(int Id, string? Phone, string? Username, long? TelegramUserId, string? DisplayName, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime CreatedAt, List<NamedDto> Groups, List<int> BatchIds);
+    public sealed record CustomerDetailDto(int Id, string? Phone, string? Username, long? TelegramUserId, long? AccessHash, string? DisplayName, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime? LastInteractionAt, DateTime CreatedAt, DateTime UpdatedAt, List<NamedDto> Groups, List<NamedDto> Batches);
 }
 
 public sealed record UserLookupRequest(string Query);
