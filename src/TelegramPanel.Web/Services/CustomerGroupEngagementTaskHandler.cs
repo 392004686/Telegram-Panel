@@ -30,7 +30,9 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
         if (config.CustomerGroupIds.Count > 0) query = query.Where(x => x.GroupAssignments.Any(g => config.CustomerGroupIds.Contains(g.CustomerGroupId)));
         var customers = await query.OrderBy(x => x.Id).Take(Math.Clamp(config.CustomerLimit, 1, 10000)).ToListAsync(cancellationToken);
         if (config.AssignmentMode == "random") customers = customers.OrderBy(_ => Guid.NewGuid()).ToList();
-        var completed = config.CompletedCustomerIds.Count, failed = 0, perGroup = Math.Clamp(config.CustomersPerGroup, 1, 200);
+        var completed = config.CompletedCustomerIds.Count;
+        var failed = 0;
+        var perGroup = Math.Clamp(config.CustomersPerGroup, 1, 200);
         for (var offset = 0; offset < customers.Count; offset += perGroup)
         {
             if (!await host.IsStillRunningAsync(cancellationToken)) return;

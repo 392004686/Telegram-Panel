@@ -42,7 +42,7 @@ public sealed class CustomerLookupTaskHandler : IModuleTaskHandler
             var customer = await db.Customers.FirstOrDefaultAsync(x =>
                 (result.UserId.HasValue && x.TelegramUserId == result.UserId)
                 || (item.NormalizedTarget.StartsWith("+") && x.Phone == item.NormalizedTarget)
-                || (item.NormalizedTarget.StartsWith("@") && x.Username == item.NormalizedTarget[1..].ToLower()), cancellationToken);
+                || (item.NormalizedTarget.StartsWith("@") && x.Username == item.NormalizedTarget.Substring(1).ToLower()), cancellationToken);
             item.ExistingCustomer = customer != null; item.CustomerId = customer?.Id;
             if (customer != null) CustomerManagementApi.ApplyLookup(customer, result);
             item.Status = result.Found ? "found" : string.IsNullOrWhiteSpace(result.Error) ? "not_found" : "failed";
