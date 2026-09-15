@@ -1108,3 +1108,14 @@ export interface BotChannelDetail {
   channel: BotChannelListItem
   remoteInfo?: BotChannelRemoteInfo | null
 }
+export interface CustomerGroupOption { id: number; name: string }
+export interface CustomerImportBatch { id: number; name: string; total: number; imported: number; duplicates: number; invalid: number; createdAt: string }
+export interface CustomerItem {
+  id: number; phone?: string | null; username?: string | null; telegramUserId?: number | null; displayName?: string | null
+  lookupStatus: string; interactionStatus: string; remark?: string | null; lastLookupAt?: string | null; createdAt: string
+  groups: CustomerGroupOption[]; batchIds: number[]
+}
+export interface UserLookupResult {
+  found: boolean; query: string; userId?: number | null; accessHash?: number | null; phone?: string | null; username?: string | null
+  displayName?: string | null; isBot: boolean; isDeleted: boolean; isRestricted: boolean; error?: string | null
+}

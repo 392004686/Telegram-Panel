@@ -1,0 +1,42 @@
+@using System.Text.Json
+@using TelegramPanel.Modules
+
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+    此任务已开放标准创建入口。请填写任务总数和对应业务配置 JSON；字段结构与原业务页面提交内容一致。
+</MudAlert>
+<MudNumericField T="int" Label="任务总数" Min="1" Value="total" ValueChanged="OnTotalChanged" Immediate="true" />
+<MudTextField T="string" Label="任务配置 JSON" Lines="12" Value="configJson" ValueChanged="OnConfigChanged" Immediate="true" />
+
+@code {
+    [Parameter] public ModuleTaskDraft Draft { get; set; } = new(0, null, false, null);
+    [Parameter] public EventCallback<ModuleTaskDraft> DraftChanged { get; set; }
+    [Parameter] public string? InitialConfigJson { get; set; }
+
+    private int total = 1;
+    private string configJson = "{}";
+    private bool initialized;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (initialized) return;
+        initialized = true;
+        if (!string.IsNullOrWhiteSpace(InitialConfigJson)) configJson = InitialConfigJson;
+        await PublishAsync();
+    }
+
+    private async Task OnTotalChanged(int value) { total = value; await PublishAsync(); }
+    private async Task OnConfigChanged(string value) { configJson = value; await PublishAsync(); }
+
+    private async Task PublishAsync()
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse(string.IsNullOrWhiteSpace(configJson) ? "{}" : configJson);
+            await DraftChanged.InvokeAsync(new ModuleTaskDraft(total, configJson, total > 0, total > 0 ? null : "任务总数必须大于 0"));
+        }
+        catch (JsonException ex)
+        {
+            await DraftChanged.InvokeAsync(new ModuleTaskDraft(total, configJson, false, $"JSON 配置无效：{ex.Message}"));
+        }
+    }
+}

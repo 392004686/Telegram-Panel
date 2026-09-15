@@ -120,6 +120,9 @@ public static class PanelAdminApiEndpoints
         secured.MapPost("/accounts/{id:int}/devices/kick-all", KickAllOtherDevicesAsync);
         secured.MapGet("/accounts/{id:int}/channels", GetAccountChannelsAsync);
         secured.MapGet("/accounts/{id:int}/groups", GetAccountGroupsAsync);
+        secured.MapPost("/accounts/{id:int}/user-lookup", async (int id, UserLookupRequest request, AccountTelegramToolsService tools, CancellationToken cancellationToken) =>
+            Results.Ok(await tools.LookupUserAsync(id, request.Query, cancellationToken)));
+        secured.MapCustomerManagementApi();
         secured.MapPost("/accounts/chat-membership", ChangeChatMembershipAsync);
         secured.MapPost("/accounts/chat-membership/risk-check", CheckChatMembershipRiskAsync);
         secured.MapPost("/accounts/{id:int}/profile", UpdateProfileAsync).DisableAntiforgery();

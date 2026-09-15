@@ -179,3 +179,14 @@ git merge upstream/main
 - 前端测试 110/110 通过，Vue TypeScript 与 Vite 生产构建通过；服务端 .NET 测试 531/531 通过；MkDocs strict 通过。
 - 5000 端口定制版与 7000 端口作者版均返回正常登录跳转。已实际回滚至 `telegram-panel:multi-user-ui-d57c57e` 验证，再恢复新镜像。
 
+### 2026-09-15 标准任务创建、客户管理与单用户查询
+
+- 为频道邀请、群组邀请、账号加群/订阅、Bot 频道邀请以及两种 Bot 管理员任务补充标准创建编辑器，任务中心不再返回“未开放标准创建入口”；当前通用编辑器按原业务配置结构接收 JSON 与任务总数。
+- 新增客户管理页及客户、客户分组、导入批次、分组关联和批次关联数据表；支持手机号或 `@username` 批量导入、去重、分组、批次留痕、筛选及删除。
+- 账号列表的“加入的群组”弹窗新增单用户查询测试；用户名使用公开解析接口，手机号使用联系人导入接口，结果不自动写入客户库。
+- 数据库迁移：`20260915090000_AddCustomerManagement`。回滚旧镜像会保留新表并由旧版忽略。
+- 重点冲突区域：`AppDbContext.cs`、`PanelAdminApiEndpoints.cs`、`AccountTelegramToolsService.cs`、`TaskCatalogModule.cs`、`Accounts.vue`、`MainLayout.vue`、`Users.vue`。
+- 本地验收：前端生产构建通过；前端测试 113/113；服务端测试 531/531；Release 编译 0 错误；MkDocs strict 通过。
+- 迁移验收：从空 SQLite 顺序应用全部迁移到 `20260915090000_AddCustomerManagement`，确认生成 `Customers`、`CustomerGroups`、`CustomerGroupAssignments`、`CustomerImportBatches`、`CustomerBatchItems`。
+- 当前提交已推送到私人仓库功能分支；本批次尚未部署 5000 端口容器，线上仍保持上一批次版本。部署时必须先备份数据库并保留上一镜像以便回滚。
+

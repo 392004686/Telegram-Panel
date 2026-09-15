@@ -14,6 +14,10 @@ import type {
   BucketBackupResult,
   BucketBackupSettings,
   CleanupWasteResult,
+  CustomerGroupOption,
+  CustomerImportBatch,
+  CustomerItem,
+  UserLookupResult,
   AuthMe,
   BatchTask,
   CreateScheduledTaskRequest,
@@ -554,6 +558,16 @@ export const panelApi = {
     api.post<OperationResult>(`/groups/${id}/disband`, {}, { timeout: 120_000 }).then((r) => r.data),
   transferGroupOwner: (id: number, payload: { target: string; password?: string | null; accountId?: number | null; targetAccountId?: number | null }) =>
     api.post<OperationResult>(`/groups/${id}/transfer-owner`, payload, { timeout: 120_000 }).then((r) => r.data),
+
+  customers: (params: { page: number; pageSize: number; search?: string; status?: string; groupId?: number; batchId?: number }) =>
+    api.get<PagedResult<CustomerItem>>('/customers', { params }).then((r) => r.data),
+  importCustomers: (payload: { values: string; batchName?: string; groupId?: number | null; newGroupName?: string; sourceName?: string }) =>
+    api.post<{ success: boolean; batchId: number; total: number; imported: number; duplicates: number; invalid: number }>('/customers/import', payload).then((r) => r.data),
+  deleteCustomer: (id: number) => api.delete<OperationResult>(`/customers/${id}`).then((r) => r.data),
+  customerGroups: () => api.get<CustomerGroupOption[]>('/customer-groups').then((r) => r.data),
+  createCustomerGroup: (payload: { name: string; description?: string }) => api.post<CustomerGroupOption>('/customer-groups', payload).then((r) => r.data),
+  customerImportBatches: () => api.get<CustomerImportBatch[]>('/customer-import-batches').then((r) => r.data),
+  lookupAccountUser: (accountId: number, query: string) => api.post<UserLookupResult>(`/accounts/${accountId}/user-lookup`, { query }, { timeout: 120_000 }).then((r) => r.data),
 
   groupCategories: () => api.get<SimpleCategory[]>('/group-categories').then((r) => r.data),
   createGroupCategory: (payload: { name: string; description?: string | null }) =>

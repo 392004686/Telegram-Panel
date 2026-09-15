@@ -41,6 +41,7 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
             DisplayName = "频道批量邀请用户",
             Description = "从频道列表提交批量邀请后在任务中心执行，支持取消以停止后续邀请。",
             Icon = Icons.Material.Filled.PersonAdd,
+            EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
             TaskCenter = new ModuleTaskCenterCapabilities
             {
                 CanPause = false,
@@ -58,6 +59,7 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
             DisplayName = "群组批量邀请用户",
             Description = "从群组列表提交批量邀请后在任务中心执行，支持取消以停止后续邀请。",
             Icon = Icons.Material.Filled.GroupAdd,
+            EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
             TaskCenter = new ModuleTaskCenterCapabilities
             {
                 CanPause = false,
@@ -75,6 +77,7 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
             DisplayName = "批量加群/订阅/启用Bot",
             Description = "使用账号批量加入频道/群组，或启用/停用外部 Bot；从账号列表提交后在后台执行。",
             Icon = Icons.Material.Filled.GroupAdd,
+            EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
             TaskCenter = new ModuleTaskCenterCapabilities
             {
                 CanPause = true,
@@ -171,6 +174,7 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
             DisplayName = "Bot频道批量邀请用户",
             Description = "从 Bot 频道列表提交批量邀请后在任务中心执行，支持取消以停止后续邀请。",
             Icon = Icons.Material.Filled.PersonAddAlt1,
+            EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
             TaskCenter = new ModuleTaskCenterCapabilities
             {
                 CanPause = false,
@@ -188,6 +192,7 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
             DisplayName = "Bot频道批量设置管理员（账号执行）",
             Description = "使用指定账号进入 Bot 频道并批量设置管理员，适用于 Bot 无法直接完成授权的场景。",
             Icon = Icons.Material.Filled.AdminPanelSettings,
+            EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
             TaskCenter = new ModuleTaskCenterCapabilities
             {
                 CanPause = true,
@@ -205,6 +210,7 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
             DisplayName = "Bot频道批量设置管理员（机器人执行）",
             Description = "由机器人对已管理的频道批量设置管理员权限。",
             Icon = Icons.Material.Filled.SmartToy,
+            EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
             TaskCenter = new ModuleTaskCenterCapabilities
             {
                 CanPause = false,

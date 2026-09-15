@@ -100,7 +100,7 @@ public sealed class ModuleTaskCreationCatalogTests
     }
 
     [Fact]
-    public void Built_in_catalog_keeps_context_created_tasks_out_of_generic_create_dialog()
+    public void Built_in_catalog_exposes_all_registered_tasks_in_standard_create_dialog()
     {
         var contributions = CreateContributions(new TaskCatalogModule("1.0.0"), builtIn: true);
 
@@ -111,13 +111,17 @@ public sealed class ModuleTaskCreationCatalogTests
             .Select(x => x.Definition.TaskType)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        Assert.Equal(4, creatableTypes.Count);
+        Assert.Equal(10, creatableTypes.Count);
         Assert.Contains(BatchTaskTypes.UserChatActive, creatableTypes);
         Assert.Contains(BatchTaskTypes.ChannelGroupPrivateCreate, creatableTypes);
         Assert.Contains(BatchTaskTypes.ChannelGroupPublicize, creatableTypes);
         Assert.Contains(BatchTaskTypes.AutoChangeLoginEmail, creatableTypes);
-        Assert.DoesNotContain(BatchTaskTypes.ChannelInviteUsers, creatableTypes);
-        Assert.DoesNotContain(BatchTaskTypes.BotSetAdmins, creatableTypes);
+        Assert.Contains(BatchTaskTypes.ChannelInviteUsers, creatableTypes);
+        Assert.Contains(BatchTaskTypes.GroupInviteUsers, creatableTypes);
+        Assert.Contains(BatchTaskTypes.UserJoinSubscribe, creatableTypes);
+        Assert.Contains(BatchTaskTypes.BotChannelInviteUsers, creatableTypes);
+        Assert.Contains(BatchTaskTypes.BotChannelSetAdminsByAccount, creatableTypes);
+        Assert.Contains(BatchTaskTypes.BotSetAdmins, creatableTypes);
     }
 
     [Theory]

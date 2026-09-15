@@ -29,6 +29,48 @@ public class AccountTelegramToolsService
     private readonly TelegramAccountUpdateHub _updateHub;
     private readonly ISessionPathResolver _sessionPathResolver;
 
+    public sealed record UserLookupResult(bool Found, string Query, long? UserId, long? AccessHash, string? Phone, string? Username, string? DisplayName, bool IsBot, bool IsDeleted, bool IsRestricted, string? Error);
+
+    public async Task<UserLookupResult> LookupUserAsync(int accountId, string query, CancellationToken cancellationToken = default)
+    {
+        query = (query ?? string.Empty).Trim();
+        if (query.Length == 0)
+            return new(false, query, null, null, null, null, null, false, false, false, "请输入手机号或 @用户名");
+
+        try
+        {
+            var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+            User? user;
+            if (query.StartsWith('+') || query.All(char.IsDigit))
+            {
+                var phone = query.StartsWith('+') ? query : "+" + query;
+                var imported = await ExecuteTelegramRequestAsync(accountId, "按手机号查找用户", () => client.Contacts_ImportContacts([
+                    new InputPhoneContact { client_id = Random.Shared.NextInt64(), phone = phone, first_name = "Lookup", last_name = "Contact" }
+                ]), cancellationToken, resetClientOnTimeout: false);
+                user = imported.users.Values.FirstOrDefault();
+            }
+            else
+            {
+                var resolved = await ExecuteTelegramRequestAsync(accountId, "按用户名查找用户", () => client.Contacts_ResolveUsername(query.TrimStart('@')), cancellationToken, resetClientOnTimeout: false);
+                user = resolved.User;
+            }
+
+            if (user == null)
+                return new(false, query, null, null, null, null, null, false, false, false, "未找到；手机号查询也可能受对方隐私设置影响");
+
+            var displayName = string.Join(" ", new[] { user.first_name, user.last_name }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            return new(true, query, user.id, user.access_hash == 0 ? null : user.access_hash, user.phone, user.MainUsername,
+                string.IsNullOrWhiteSpace(displayName) ? null : displayName, user.IsBot,
+                user.flags.HasFlag(User.Flags.deleted), user.flags.HasFlag(User.Flags.restricted), null);
+        }
+        catch (Exception ex)
+        {
+            var (summary, details) = MapTelegramException(ex);
+            return new(false, query, null, null, null, null, null, false, false, false,
+                string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}");
+        }
+    }
+
     public AccountTelegramToolsService(
         AccountManagementService accountManagement,
         ITelegramClientPool clientPool,

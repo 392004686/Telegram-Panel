@@ -32,6 +32,11 @@ public class AppDbContext : DbContext
     public DbSet<OutboundProxy> OutboundProxies => Set<OutboundProxy>();
     public DbSet<ProxyCategory> ProxyCategories => Set<ProxyCategory>();
     public DbSet<WarpProfile> WarpProfiles => Set<WarpProfile>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<CustomerGroup> CustomerGroups => Set<CustomerGroup>();
+    public DbSet<CustomerGroupAssignment> CustomerGroupAssignments => Set<CustomerGroupAssignment>();
+    public DbSet<CustomerImportBatch> CustomerImportBatches => Set<CustomerImportBatch>();
+    public DbSet<CustomerBatchItem> CustomerBatchItems => Set<CustomerBatchItem>();
 
     private static readonly SemaphoreSlim AccountDisplayNumberGate = new(1, 1);
 
@@ -129,6 +134,47 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<Customer>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Phone).HasMaxLength(32);
+            entity.Property(x => x.Username).HasMaxLength(100);
+            entity.Property(x => x.DisplayName).HasMaxLength(200);
+            entity.Property(x => x.LookupStatus).IsRequired().HasMaxLength(40);
+            entity.Property(x => x.InteractionStatus).IsRequired().HasMaxLength(40);
+            entity.Property(x => x.Remark).HasMaxLength(1000);
+            entity.HasIndex(x => x.Phone).IsUnique();
+            entity.HasIndex(x => x.Username).IsUnique();
+            entity.HasIndex(x => x.TelegramUserId);
+            entity.HasIndex(x => x.LookupStatus);
+        });
+        modelBuilder.Entity<CustomerGroup>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).IsRequired().HasMaxLength(100);
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+        modelBuilder.Entity<CustomerGroupAssignment>(entity =>
+        {
+            entity.HasKey(x => new { x.CustomerId, x.CustomerGroupId });
+            entity.HasOne(x => x.Customer).WithMany(x => x.GroupAssignments).HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.CustomerGroup).WithMany(x => x.Assignments).HasForeignKey(x => x.CustomerGroupId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<CustomerImportBatch>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).IsRequired().HasMaxLength(150);
+            entity.Property(x => x.SourceName).HasMaxLength(255);
+        });
+        modelBuilder.Entity<CustomerBatchItem>(entity =>
+        {
+            entity.HasKey(x => new { x.CustomerImportBatchId, x.CustomerId });
+            entity.Property(x => x.RawValue).IsRequired().HasMaxLength(255);
+            entity.HasOne(x => x.CustomerImportBatch).WithMany(x => x.Items).HasForeignKey(x => x.CustomerImportBatchId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Customer).WithMany(x => x.BatchItems).HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         // Account配置
         modelBuilder.Entity<Account>(entity =>
