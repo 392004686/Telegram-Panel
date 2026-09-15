@@ -188,5 +188,6 @@ git merge upstream/main
 - 重点冲突区域：`AppDbContext.cs`、`PanelAdminApiEndpoints.cs`、`AccountTelegramToolsService.cs`、`TaskCatalogModule.cs`、`Accounts.vue`、`MainLayout.vue`、`Users.vue`。
 - 本地验收：前端生产构建通过；前端测试 113/113；服务端测试 531/531；Release 编译 0 错误；MkDocs strict 通过。
 - 迁移验收：从空 SQLite 顺序应用全部迁移到 `20260915090000_AddCustomerManagement`，确认生成 `Customers`、`CustomerGroups`、`CustomerGroupAssignments`、`CustomerImportBatches`、`CustomerBatchItems`。
-- 当前提交已推送到私人仓库功能分支；本批次尚未部署 5000 端口容器，线上仍保持上一批次版本。部署时必须先备份数据库并保留上一镜像以便回滚。
+- 部署验收（2026-09-15）：提交 `aeb683c` 已部署到 5000 端口，镜像 `telegram-panel:multi-user-ui-aeb683c`，镜像 ID `sha256:32dae79bd73b27ff95c74c848e75c3760fb81cd9398df9813ba998541e945ed5`。`/healthz`、`/ui/customers`、`/api/panel/auth/me` 均返回 HTTP 200；线上数据库已迁移至 `20260915090000_AddCustomerManagement` 并确认五张客户管理表存在。7000 端口作者版容器保持原镜像且健康。
+- 部署前完整数据备份：`/root/telegram-panel-data-20260915-095330.tar.gz`，SHA-256 `4924c5b8c71cc0bb407075a80da3958dce0ead942014f5f73e41d54f50c6995b`。保留上一镜像 `telegram-panel:multi-user-ui-61b3fa3` 作为运行回滚点。
 
