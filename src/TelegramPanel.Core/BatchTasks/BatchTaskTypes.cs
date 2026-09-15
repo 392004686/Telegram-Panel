@@ -24,5 +24,7 @@ public static class BatchTaskTypes
 
     // System 任务（记录到任务中心）
     public const string AccountAutoSync = "account_auto_sync";
+    public const string CustomerLookup = "customer_lookup";
+    public const string CustomerGroupEngagement = "customer_group_engagement";
 
 }

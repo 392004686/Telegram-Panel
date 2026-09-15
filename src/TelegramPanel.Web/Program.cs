@@ -520,6 +520,8 @@ builder.Services.AddScoped<IModuleTaskHandler, ChannelGroupPrivateCreateTaskHand
 builder.Services.AddScoped<IModuleTaskHandler, ChannelGroupPublicizeTaskHandler>();
 builder.Services.AddScoped<IModuleTaskHandler, AutoChangeLoginEmailTaskHandler>();
 builder.Services.AddScoped<IModuleTaskHandler, AccountAutoSyncTaskHandler>();
+builder.Services.AddScoped<IModuleTaskHandler, CustomerLookupTaskHandler>();
+builder.Services.AddScoped<IModuleTaskHandler, CustomerGroupEngagementTaskHandler>();
 builder.Services.AddSingleton<ModuleTaskLifecycleService>();
 builder.Services.AddSingleton<BatchTaskExecutionControlService>();
 builder.Services.AddSingleton<BatchTaskStartupRecoveryService>();

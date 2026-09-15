@@ -37,6 +37,8 @@ public class AppDbContext : DbContext
     public DbSet<CustomerGroupAssignment> CustomerGroupAssignments => Set<CustomerGroupAssignment>();
     public DbSet<CustomerImportBatch> CustomerImportBatches => Set<CustomerImportBatch>();
     public DbSet<CustomerBatchItem> CustomerBatchItems => Set<CustomerBatchItem>();
+    public DbSet<CustomerLookupBatch> CustomerLookupBatches => Set<CustomerLookupBatch>();
+    public DbSet<CustomerLookupItem> CustomerLookupItems => Set<CustomerLookupItem>();
 
     private static readonly SemaphoreSlim AccountDisplayNumberGate = new(1, 1);
 
@@ -140,7 +142,8 @@ public class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Phone).HasMaxLength(32);
             entity.Property(x => x.Username).HasMaxLength(100);
-              entity.Property(x => x.DisplayName).HasMaxLength(200);
+            entity.Property(x => x.DisplayName).HasMaxLength(200);
+            entity.Property(x => x.Nickname).HasMaxLength(200);
               entity.Property(x => x.ActivityStatus).IsRequired().HasMaxLength(40);
               entity.Property(x => x.Birthday).HasMaxLength(20);
             entity.Property(x => x.LookupStatus).IsRequired().HasMaxLength(40);
@@ -150,6 +153,33 @@ public class AppDbContext : DbContext
             entity.HasIndex(x => x.Username).IsUnique();
             entity.HasIndex(x => x.TelegramUserId);
             entity.HasIndex(x => x.LookupStatus);
+        });
+        modelBuilder.Entity<CustomerLookupBatch>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).IsRequired().HasMaxLength(150);
+            entity.Property(x => x.Mode).IsRequired().HasMaxLength(20);
+            entity.Property(x => x.AccountSource).IsRequired().HasMaxLength(20);
+            entity.Property(x => x.AccountIdsJson).IsRequired();
+            entity.Property(x => x.TargetOrder).IsRequired().HasMaxLength(20);
+            entity.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            entity.HasIndex(x => x.BatchTaskId).IsUnique();
+            entity.HasIndex(x => new { x.CreatedAt, x.Status });
+        });
+        modelBuilder.Entity<CustomerLookupItem>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RawTarget).IsRequired().HasMaxLength(255);
+            entity.Property(x => x.NormalizedTarget).IsRequired().HasMaxLength(255);
+            entity.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            entity.Property(x => x.Error).HasMaxLength(2000);
+            entity.Property(x => x.Phone).HasMaxLength(32);
+            entity.Property(x => x.Username).HasMaxLength(100);
+            entity.Property(x => x.DisplayName).HasMaxLength(200);
+            entity.Property(x => x.ActivityStatus).IsRequired().HasMaxLength(40);
+            entity.Property(x => x.Birthday).HasMaxLength(20);
+            entity.HasIndex(x => new { x.CustomerLookupBatchId, x.Sequence }).IsUnique();
+            entity.HasOne(x => x.Batch).WithMany(x => x.Items).HasForeignKey(x => x.CustomerLookupBatchId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CustomerGroup>(entity =>
         {

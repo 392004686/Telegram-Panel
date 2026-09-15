@@ -1111,10 +1111,10 @@ export interface BotChannelDetail {
 export interface CustomerGroupOption { id: number; name: string; description?: string | null; customerCount?: number }
 export interface CustomerImportBatch { id: number; name: string; total: number; imported: number; duplicates: number; invalid: number; createdAt: string }
 export interface CustomerItem {
-  id: number; phone?: string | null; username?: string | null; telegramUserId?: number | null; displayName?: string | null
+  id: number; phone?: string | null; username?: string | null; telegramUserId?: number | null; displayName?: string | null; nickname?: string | null
   hasPhoto: boolean; activityStatus: string; lastSeenAt?: string | null; isPremium: boolean; isBot: boolean; isVerified: boolean
   isScam: boolean; isFake: boolean; isDeleted: boolean; birthday?: string | null
-  lookupStatus: string; interactionStatus: string; remark?: string | null; lastLookupAt?: string | null; createdAt: string
+  lookupStatus: string; interactionStatus: string; remark?: string | null; lastLookupAt?: string | null; lastDataSyncAt?: string | null; createdAt: string
   groups: CustomerGroupOption[]; batchIds: number[]
 }
 export interface CustomerDetail extends CustomerItem {
@@ -1126,3 +1126,5 @@ export interface UserLookupResult {
   isBot: boolean; isVerified: boolean; isScam: boolean; isFake: boolean; isDeleted: boolean; isRestricted: boolean; birthday?: string | null; error?: string | null
 }
 export interface CustomerLookupEnvelope { customerId?: number | null; existingCustomer: boolean; result: UserLookupResult }
+export interface CustomerLookupBatch { id:number; batchTaskId?:number|null; name:string; mode:string; accountSource:string; status:string; total:number; completed:number; found:number; notFound:number; failed:number; createdAt:string; startedAt?:string|null; completedAt?:string|null; lastHeartbeatAt?:string|null }
+export interface CustomerLookupItem { id:number; rawTarget:string; normalizedTarget:string; sequence:number; accountId?:number|null; customerId?:number|null; existingCustomer:boolean; status:string; error?:string|null; attemptCount:number; telegramUserId?:number|null; phone?:string|null; username?:string|null; displayName?:string|null; hasPhoto:boolean; activityStatus:string; lastSeenAt?:string|null; isPremium:boolean; isBot:boolean; isVerified:boolean; isScam:boolean; isFake:boolean; isDeleted:boolean; isRestricted:boolean; birthday?:string|null }

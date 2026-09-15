@@ -8,6 +8,7 @@ public class Customer
     public long? TelegramUserId { get; set; }
     public long? AccessHash { get; set; }
     public string? DisplayName { get; set; }
+    public string? Nickname { get; set; }
     public bool HasPhoto { get; set; }
     public string ActivityStatus { get; set; } = "unknown";
     public DateTime? LastSeenAt { get; set; }
@@ -23,6 +24,7 @@ public class Customer
     public string InteractionStatus { get; set; } = "uncontacted";
     public string? Remark { get; set; }
     public DateTime? LastLookupAt { get; set; }
+    public DateTime? LastDataSyncAt { get; set; }
     public DateTime? LastInteractionAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
