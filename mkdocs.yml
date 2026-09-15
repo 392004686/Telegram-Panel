@@ -47,6 +47,7 @@ nav:
   - 开发:
       - 模块开发: developer/modules.md
       - 自定义版本变更追踪: developer/custom-change-log.md
+      - 客户建群活跃执行器设计: developer/customer-group-engagement-task-design.md
       - 后台多用户与权限: developer/multi-user-permissions.md
       - 群组管理员移除: developer/group-admin-removal.md
       - WTelegram Layer 兼容性: developer/telegram-layer-compatibility.md
