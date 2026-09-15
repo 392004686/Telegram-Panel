@@ -200,4 +200,6 @@ git merge upstream/main
 - 新增客户详情、直接查询、已有客户查询、批量操作和客户分类增删改 API；无数据库结构变更。
 - 重点冲突区域：`Customers.vue`、`CustomerCategories.vue`、`MainLayout.vue`、`Users.vue`、`CustomerManagementApi.cs`。
 - 回滚：切回镜像 `telegram-panel:multi-user-ui-aeb683c`；新增 API 和界面消失，已存在客户及分类数据保持不变。
+- 部署验收：提交 `341390a` 已部署到 5000 端口，镜像 `telegram-panel:multi-user-ui-341390a`，镜像 ID `sha256:5a3c3076670a328bbbd9a779d89c539a4c40a155b2203c373c5819de4610a11a`；客户列表、客户分类页面 HTTP 200，相关 API 未登录时按预期 302 跳转登录，容器健康。7000 端口作者版未改动且健康。
+- 部署前备份：`/root/telegram-panel-data-20260915-134207.tar.gz`，SHA-256 `cc5452bb59cbf553cb14f589456659cb46fb608781c5ecb59710cffe5990ae20`。
 
