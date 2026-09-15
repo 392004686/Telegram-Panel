@@ -213,3 +213,5 @@ git merge upstream/main
 - 清理 Telegram 临时联系人时过滤 `Lookup Contact` / `Telegram Lookup` 占位名，避免写入客户姓名。
 - GET 请求遇到 502/503/504 自动退避重试两次；客户主数据与分类/批次元数据独立加载，失败时保留成功数据并提供中文重载入口。
 - 数据库迁移：`20260915150000_AddCustomerTelegramProfile`。
+
+- 部署验收：提交 `df694fa` 已部署至 5000，镜像 `telegram-panel:multi-user-ui-df694fa`（`sha256:9918865e480967ee773b14419aa9e588b889f083e04a24cd34eeeed07450eeed`）；客户列表、账号筛选与健康检查均 HTTP 200，7000 作者版保持 HTTP 200。
