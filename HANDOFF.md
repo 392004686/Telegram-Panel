@@ -306,3 +306,11 @@
 ## 9. 工作区状态
 
 创建本文前仓库 `git status --short` 为空，最新提交为 `6f95074`。本文是本轮唯一新增/修改文件，按用户要求用于下一次对话检索和续作。
+
+## 10. 2026-09-16 同步与部署补充
+
+- 批量建群、邀请客户、执行活跃并标记已沟通的执行器设计已写入 `docs/developer/customer-group-engagement-task-design.md`；当前仅完成设计，代码、迁移、任务表单与测试尚未实现。
+- 设计提交 `678beb3` 已推送私人仓库并部署至 5000。
+- 5000 镜像：`telegram-panel:multi-user-ui-678beb3`，镜像 ID：`sha256:1e8ec644efa8739f7970b00b4e3d8d11512327d50d9142fb8459b158ac90bff2`。
+- 部署前备份：`/root/telegram-panel-data-20260915-163010.tar.gz`，SHA-256：`afd1967d5c8a0302bfc85845b6df70612559903fbbb66e7885e8eae1a3984571`。
+- 5000 与 7000 `/healthz` 均为 HTTP 200；7000 继续运行 `ghcr.io/moeacgx/telegram-panel:latest`，未修改。
