@@ -27,12 +27,12 @@ public static class CustomerManagementApi
     {
         page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
         var query = db.Customers.AsNoTracking().Include(x => x.GroupAssignments).ThenInclude(x => x.CustomerGroup).Include(x => x.BatchItems).AsQueryable();
-        if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => (x.Phone != null && x.Phone.Contains(search)) || (x.Username != null && x.Username.Contains(search)) || (x.DisplayName != null && x.DisplayName.Contains(search)));
+        if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => (x.Phone != null && x.Phone.Contains(search)) || (x.Username != null && x.Username.Contains(search)) || (x.DisplayName != null && x.DisplayName.Contains(search)) || (x.TelegramUserId != null && x.TelegramUserId.ToString()!.Contains(search)));
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.LookupStatus == status);
         if (groupId.HasValue) query = query.Where(x => x.GroupAssignments.Any(g => g.CustomerGroupId == groupId));
         if (batchId.HasValue) query = query.Where(x => x.BatchItems.Any(b => b.CustomerImportBatchId == batchId));
         var total = await query.CountAsync();
-        var items = await query.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new CustomerDto(x.Id, x.Phone, x.Username, x.TelegramUserId, x.DisplayName, x.LookupStatus, x.InteractionStatus, x.Remark, x.LastLookupAt, x.CreatedAt, x.GroupAssignments.Select(g => new NamedDto(g.CustomerGroupId, g.CustomerGroup.Name)).ToList(), x.BatchItems.Select(b => b.CustomerImportBatchId).ToList())).ToListAsync();
+        var items = await query.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new CustomerDto(x.Id, x.Phone, x.Username, x.TelegramUserId, x.DisplayName, x.HasPhoto, x.ActivityStatus, x.LastSeenAt, x.IsPremium, x.IsBot, x.IsVerified, x.IsScam, x.IsFake, x.IsDeleted, x.Birthday, x.LookupStatus, x.InteractionStatus, x.Remark, x.LastLookupAt, x.CreatedAt, x.GroupAssignments.Select(g => new NamedDto(g.CustomerGroupId, g.CustomerGroup.Name)).ToList(), x.BatchItems.Select(b => b.CustomerImportBatchId).ToList())).ToListAsync();
         return Results.Ok(new { items, total, page, pageSize });
     }
 
@@ -54,15 +54,8 @@ public static class CustomerManagementApi
         var imported = 0; var duplicates = 0; var invalid = 0;
         foreach (var raw in rawItems)
         {
-            var value = raw.Trim(); string? phone = null; string? username = null;
-            if (value.StartsWith('@')) username = value.TrimStart('@').Trim().ToLowerInvariant();
-            else
-            {
-                var digits = new string(value.Where(char.IsDigit).ToArray());
-                if (digits.Length >= 7) phone = "+" + digits;
-                else if (value.All(c => char.IsLetterOrDigit(c) || c == '_')) username = value.ToLowerInvariant();
-                else { invalid++; continue; }
-            }
+            var value = raw.Trim();
+            if (!TryNormalizeTarget(value, out var phone, out var username)) { invalid++; continue; }
             var customer = await db.Customers.FirstOrDefaultAsync(x => (phone != null && x.Phone == phone) || (username != null && x.Username == username));
             if (customer == null)
             {
@@ -83,7 +76,7 @@ public static class CustomerManagementApi
     private static async Task<IResult> DetailAsync(int id, AppDbContext db)
     {
         var item = await db.Customers.AsNoTracking().Include(x => x.GroupAssignments).ThenInclude(x => x.CustomerGroup).Include(x => x.BatchItems).ThenInclude(x => x.CustomerImportBatch).FirstOrDefaultAsync(x => x.Id == id);
-        return item == null ? Results.NotFound() : Results.Ok(new CustomerDetailDto(item.Id, item.Phone, item.Username, item.TelegramUserId, item.AccessHash, item.DisplayName, item.LookupStatus, item.InteractionStatus, item.Remark, item.LastLookupAt, item.LastInteractionAt, item.CreatedAt, item.UpdatedAt, item.GroupAssignments.Select(x => new NamedDto(x.CustomerGroupId, x.CustomerGroup.Name)).ToList(), item.BatchItems.Select(x => new NamedDto(x.CustomerImportBatchId, x.CustomerImportBatch.Name)).ToList()));
+        return item == null ? Results.NotFound() : Results.Ok(new CustomerDetailDto(item.Id, item.Phone, item.Username, item.TelegramUserId, item.AccessHash, item.DisplayName, item.HasPhoto, item.ActivityStatus, item.LastSeenAt, item.IsPremium, item.IsBot, item.IsVerified, item.IsScam, item.IsFake, item.IsDeleted, item.IsRestricted, item.Birthday, item.LookupStatus, item.InteractionStatus, item.Remark, item.LastLookupAt, item.LastInteractionAt, item.CreatedAt, item.UpdatedAt, item.GroupAssignments.Select(x => new NamedDto(x.CustomerGroupId, x.CustomerGroup.Name)).ToList(), item.BatchItems.Select(x => new NamedDto(x.CustomerImportBatchId, x.CustomerImportBatch.Name)).ToList()));
     }
     private static async Task<IResult> LookupAsync(int id, CustomerLookupRequest request, AppDbContext db, AccountTelegramToolsService tools, CancellationToken cancellationToken)
     {
@@ -91,33 +84,47 @@ public static class CustomerManagementApi
         if (customer == null) return Results.NotFound();
         var query = customer.Phone ?? (customer.Username == null ? string.Empty : $"@{customer.Username}");
         var result = await tools.LookupUserAsync(request.AccountId, query, cancellationToken);
-        customer.LookupStatus = result.Found ? "found" : string.IsNullOrWhiteSpace(result.Error) ? "not_found" : "error";
-        customer.LastLookupAt = DateTime.UtcNow;
-        customer.UpdatedAt = DateTime.UtcNow;
-        if (result.Found)
-        {
-            customer.TelegramUserId = result.UserId; customer.AccessHash = result.AccessHash;
-            customer.Phone = string.IsNullOrWhiteSpace(result.Phone) ? customer.Phone : result.Phone;
-            customer.Username = string.IsNullOrWhiteSpace(result.Username) ? customer.Username : result.Username;
-            customer.DisplayName = result.DisplayName;
-        }
+        ApplyLookup(customer, result);
         await db.SaveChangesAsync(cancellationToken);
         return Results.Ok(result);
     }
     private static async Task<IResult> LookupNewAsync(CustomerDirectLookupRequest request, AppDbContext db, AccountTelegramToolsService tools, CancellationToken cancellationToken)
     {
-        var query = request.Query.Trim();
-        if (query.Length == 0) return Results.BadRequest(new { message = "请输入手机号或 @用户名" });
-        var normalizedPhone = query.StartsWith('+') ? new string(query.Where(x => char.IsDigit(x) || x == '+').ToArray()) : null;
-        var normalizedUsername = normalizedPhone == null ? query.TrimStart('@').ToLowerInvariant() : null;
+        var query = (request.Query ?? string.Empty).Trim();
+        if (!TryNormalizeTarget(query, out var normalizedPhone, out var normalizedUsername)) return Results.BadRequest(new { message = "仅支持手机号（数字、空格、可选开头 +）或 @用户名" });
         var customer = await db.Customers.FirstOrDefaultAsync(x => (normalizedPhone != null && x.Phone == normalizedPhone) || (normalizedUsername != null && x.Username == normalizedUsername), cancellationToken);
-        if (customer == null)
+        var result = await tools.LookupUserAsync(request.AccountId, normalizedPhone ?? $"@{normalizedUsername}", cancellationToken);
+        if (customer != null) { ApplyLookup(customer, result); await db.SaveChangesAsync(cancellationToken); }
+        return Results.Ok(new { customerId = customer?.Id, existingCustomer = customer != null, result });
+    }
+
+    private static void ApplyLookup(Customer customer, AccountTelegramToolsService.UserLookupResult result)
+    {
+        customer.LookupStatus = result.Found ? "found" : string.IsNullOrWhiteSpace(result.Error) ? "not_found" : "error";
+        customer.LastLookupAt = DateTime.UtcNow; customer.UpdatedAt = DateTime.UtcNow;
+        if (!result.Found) return;
+        customer.TelegramUserId = result.UserId; customer.AccessHash = result.AccessHash;
+        customer.Phone = string.IsNullOrWhiteSpace(result.Phone) ? customer.Phone : result.Phone;
+        customer.Username = string.IsNullOrWhiteSpace(result.Username) ? customer.Username : result.Username;
+        customer.DisplayName = result.DisplayName; customer.HasPhoto = result.HasPhoto; customer.ActivityStatus = result.ActivityStatus;
+        customer.LastSeenAt = result.LastSeenAt; customer.IsPremium = result.IsPremium; customer.IsBot = result.IsBot;
+        customer.IsVerified = result.IsVerified; customer.IsScam = result.IsScam; customer.IsFake = result.IsFake;
+        customer.IsDeleted = result.IsDeleted; customer.IsRestricted = result.IsRestricted; customer.Birthday = result.Birthday;
+    }
+
+    private static bool TryNormalizeTarget(string value, out string? phone, out string? username)
+    {
+        phone = null; username = null; value = value.Trim();
+        if (value.StartsWith('@'))
         {
-            customer = new Customer { Phone = normalizedPhone, Username = normalizedUsername };
-            db.Customers.Add(customer);
-            await db.SaveChangesAsync(cancellationToken);
+            var candidate = value[1..];
+            if (candidate.Length is < 3 or > 32 || candidate.Any(c => !char.IsLetterOrDigit(c) && c != '_')) return false;
+            username = candidate.ToLowerInvariant(); return true;
         }
-        return await LookupAsync(customer.Id, new CustomerLookupRequest(request.AccountId), db, tools, cancellationToken);
+        if (value.Length == 0 || value.Any(c => !char.IsDigit(c) && c != ' ' && c != '+') || value.Count(c => c == '+') > 1 || (value.Contains('+') && !value.StartsWith('+'))) return false;
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        if (digits.Length is < 7 or > 15) return false;
+        phone = "+" + digits; return true;
     }
     private static async Task<IResult> BatchAsync(CustomerBatchRequest request, AppDbContext db, CancellationToken cancellationToken)
     {
@@ -153,8 +160,8 @@ public static class CustomerManagementApi
     public sealed record NamedDto(int Id, string Name);
     public sealed record CustomerGroupDto(int Id, string Name, string? Description, int CustomerCount);
     public sealed record CustomerBatchDto(int Id, string Name, int Total, int Imported, int Duplicates, int Invalid, DateTime CreatedAt);
-    public sealed record CustomerDto(int Id, string? Phone, string? Username, long? TelegramUserId, string? DisplayName, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime CreatedAt, List<NamedDto> Groups, List<int> BatchIds);
-    public sealed record CustomerDetailDto(int Id, string? Phone, string? Username, long? TelegramUserId, long? AccessHash, string? DisplayName, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime? LastInteractionAt, DateTime CreatedAt, DateTime UpdatedAt, List<NamedDto> Groups, List<NamedDto> Batches);
+    public sealed record CustomerDto(int Id, string? Phone, string? Username, long? TelegramUserId, string? DisplayName, bool HasPhoto, string ActivityStatus, DateTime? LastSeenAt, bool IsPremium, bool IsBot, bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, string? Birthday, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime CreatedAt, List<NamedDto> Groups, List<int> BatchIds);
+    public sealed record CustomerDetailDto(int Id, string? Phone, string? Username, long? TelegramUserId, long? AccessHash, string? DisplayName, bool HasPhoto, string ActivityStatus, DateTime? LastSeenAt, bool IsPremium, bool IsBot, bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, bool IsRestricted, string? Birthday, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime? LastInteractionAt, DateTime CreatedAt, DateTime UpdatedAt, List<NamedDto> Groups, List<NamedDto> Batches);
 }
 
 public sealed record UserLookupRequest(string Query);

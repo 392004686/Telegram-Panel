@@ -20,11 +20,14 @@ test('客户管理已接入路由导航和团队导航权限', () => {
   assert.match(read('src/views/Users.vue'), /value: 'customers-group', label: '客户管理'/)
 })
 
-test('查找用户已迁移到客户列表并保存查询结果', () => {
-  const customers = read('src/views/Customers.vue')
-  assert.match(customers, /查找用户/)
-  assert.match(customers, /lookupNewCustomer/)
-  assert.match(customers, /查看详情/)
+test('账号筛选已从客户列表拆分并支持批量详细查询', () => {
+  const lookup = read('src/views/CustomerLookup.vue')
+  assert.match(lookup, /账号分类轮询/)
+  assert.match(lookup, /lookupNewCustomer/)
+  assert.match(lookup, /最小间隔/)
+  assert.match(lookup, /Premium/)
+  assert.match(read('src/router/index.ts'), /customers\/lookup/)
+  assert.match(read('src/views/Customers.vue'), /查看详情/)
   assert.doesNotMatch(read('src/views/Accounts.vue'), /手动查找用户是否存在/)
 })
 

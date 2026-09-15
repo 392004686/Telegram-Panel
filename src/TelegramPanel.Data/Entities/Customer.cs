@@ -8,6 +8,17 @@ public class Customer
     public long? TelegramUserId { get; set; }
     public long? AccessHash { get; set; }
     public string? DisplayName { get; set; }
+    public bool HasPhoto { get; set; }
+    public string ActivityStatus { get; set; } = "unknown";
+    public DateTime? LastSeenAt { get; set; }
+    public bool IsPremium { get; set; }
+    public bool IsBot { get; set; }
+    public bool IsVerified { get; set; }
+    public bool IsScam { get; set; }
+    public bool IsFake { get; set; }
+    public bool IsDeleted { get; set; }
+    public bool IsRestricted { get; set; }
+    public string? Birthday { get; set; }
     public string LookupStatus { get; set; } = "pending";
     public string InteractionStatus { get; set; } = "uncontacted";
     public string? Remark { get; set; }

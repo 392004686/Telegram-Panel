@@ -140,7 +140,9 @@ public class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Phone).HasMaxLength(32);
             entity.Property(x => x.Username).HasMaxLength(100);
-            entity.Property(x => x.DisplayName).HasMaxLength(200);
+              entity.Property(x => x.DisplayName).HasMaxLength(200);
+              entity.Property(x => x.ActivityStatus).IsRequired().HasMaxLength(40);
+              entity.Property(x => x.Birthday).HasMaxLength(20);
             entity.Property(x => x.LookupStatus).IsRequired().HasMaxLength(40);
             entity.Property(x => x.InteractionStatus).IsRequired().HasMaxLength(40);
             entity.Property(x => x.Remark).HasMaxLength(1000);

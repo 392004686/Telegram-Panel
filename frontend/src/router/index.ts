@@ -20,6 +20,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'accounts/login', component: () => import('@/views/AccountLogin.vue'), meta: { title: '手动登录' } },
       { path: 'accounts/categories', component: () => import('@/views/AccountCategories.vue'), meta: { title: '账号分类' } },
       { path: 'customers', component: () => import('@/views/Customers.vue'), meta: { title: '客户列表' } },
+      { path: 'customers/lookup', component: () => import('@/views/CustomerLookup.vue'), meta: { title: '账号筛选' } },
       { path: 'customers/categories', component: () => import('@/views/CustomerCategories.vue'), meta: { title: '客户分类' } },
       { path: 'proxies', component: () => import('@/views/Proxies.vue'), meta: { title: '代理管理' } },
       { path: 'channels', component: () => import('@/views/Channels.vue'), meta: { title: '频道列表' } },

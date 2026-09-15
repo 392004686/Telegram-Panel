@@ -169,6 +169,7 @@ const staticMenuItems: MenuItem[] = [
   },
   { index: 'customers-group', label: '客户管理', icon: 'contacts', roles: ['admin', 'operator'], children: [
     { index: '/customers', label: '客户列表', icon: 'people' },
+    { index: '/customers/lookup', label: '账号筛选', icon: 'manage_search' },
     { index: '/customers/categories', label: '客户分类', icon: 'category' },
   ] },
   { index: '/proxies', label: '代理管理', icon: 'vpn_lock' },

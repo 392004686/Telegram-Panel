@@ -29,25 +29,29 @@ public class AccountTelegramToolsService
     private readonly TelegramAccountUpdateHub _updateHub;
     private readonly ISessionPathResolver _sessionPathResolver;
 
-    public sealed record UserLookupResult(bool Found, string Query, long? UserId, long? AccessHash, string? Phone, string? Username, string? DisplayName, bool IsBot, bool IsDeleted, bool IsRestricted, string? Error);
+    public sealed record UserLookupResult(bool Found, string Query, long? UserId, long? AccessHash, string? Phone, string? Username,
+        string? DisplayName, bool HasPhoto, string ActivityStatus, DateTime? LastSeenAt, bool IsPremium, bool IsBot,
+        bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, bool IsRestricted, string? Birthday, string? Error);
 
     public async Task<UserLookupResult> LookupUserAsync(int accountId, string query, CancellationToken cancellationToken = default)
     {
         query = (query ?? string.Empty).Trim();
         if (query.Length == 0)
-            return new(false, query, null, null, null, null, null, false, false, false, "请输入手机号或 @用户名");
+            return EmptyLookup(query, "请输入手机号或 @用户名");
 
         try
         {
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             User? user;
+            var temporaryContact = false;
             if (query.StartsWith('+') || query.All(char.IsDigit))
             {
                 var phone = query.StartsWith('+') ? query : "+" + query;
                 var imported = await ExecuteTelegramRequestAsync(accountId, "按手机号查找用户", () => client.Contacts_ImportContacts([
-                    new InputPhoneContact { client_id = Random.Shared.NextInt64(), phone = phone, first_name = "Lookup", last_name = "Contact" }
+                    new InputPhoneContact { client_id = Random.Shared.NextInt64(), phone = phone, first_name = "Telegram", last_name = "Lookup" }
                 ]), cancellationToken, resetClientOnTimeout: false);
                 user = imported.users.Values.FirstOrDefault();
+                temporaryContact = user != null;
             }
             else
             {
@@ -56,20 +60,51 @@ public class AccountTelegramToolsService
             }
 
             if (user == null)
-                return new(false, query, null, null, null, null, null, false, false, false, "未找到；手机号查询也可能受对方隐私设置影响");
+                return EmptyLookup(query, "未找到；手机号查询也可能受对方隐私设置影响");
+
+            string? birthday = null;
+            try
+            {
+                var full = await ExecuteTelegramRequestAsync(accountId, "读取用户完整资料", () => client.Users_GetFullUser(new InputUser(user.id, user.access_hash)), cancellationToken, resetClientOnTimeout: false);
+                var value = full.full_user.birthday;
+                if (value != null) birthday = value.year > 0 ? $"{value.year:D4}-{value.month:D2}-{value.day:D2}" : $"{value.month:D2}-{value.day:D2}";
+            }
+            catch (Exception ex) { _logger.LogDebug(ex, "Unable to read optional full profile for user {UserId}", user.id); }
 
             var displayName = string.Join(" ", new[] { user.first_name, user.last_name }.Where(x => !string.IsNullOrWhiteSpace(x)));
-            return new(true, query, user.id, user.access_hash == 0 ? null : user.access_hash, user.phone, user.MainUsername,
-                string.IsNullOrWhiteSpace(displayName) ? null : displayName, user.IsBot,
-                user.flags.HasFlag(User.Flags.deleted), user.flags.HasFlag(User.Flags.restricted), null);
+            if (displayName.Equals("Telegram Lookup", StringComparison.OrdinalIgnoreCase)
+                || displayName.Equals("Lookup Contact", StringComparison.OrdinalIgnoreCase))
+                displayName = string.Empty;
+            var (activityStatus, lastSeenAt) = MapUserStatus(user.status);
+            var result = new UserLookupResult(true, query, user.id, user.access_hash == 0 ? null : user.access_hash, user.phone, user.MainUsername,
+                string.IsNullOrWhiteSpace(displayName) ? null : displayName, user.photo != null, activityStatus, lastSeenAt,
+                user.flags.HasFlag(User.Flags.premium), user.IsBot, user.flags.HasFlag(User.Flags.verified), user.flags.HasFlag(User.Flags.scam),
+                user.flags.HasFlag(User.Flags.fake), user.flags.HasFlag(User.Flags.deleted), user.flags.HasFlag(User.Flags.restricted), birthday, null);
+            if (temporaryContact)
+            {
+                try { await client.Contacts_DeleteContacts([new InputUser(user.id, user.access_hash)]); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Temporary lookup contact cleanup failed for user {UserId}", user.id); }
+            }
+            return result;
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            return new(false, query, null, null, null, null, null, false, false, false,
-                string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}");
+            return EmptyLookup(query, string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}");
         }
     }
+
+    private static UserLookupResult EmptyLookup(string query, string error) => new(false, query, null, null, null, null, null, false, "unknown", null, false, false, false, false, false, false, false, null, error);
+
+    private static (string Status, DateTime? LastSeenAt) MapUserStatus(UserStatus? status) => status switch
+    {
+        UserStatusOnline => ("online", null),
+        UserStatusOffline offline => ("offline", offline.was_online),
+        UserStatusRecently => ("recently", null),
+        UserStatusLastWeek => ("last_week", null),
+        UserStatusLastMonth => ("last_month", null),
+        _ => ("unknown", null)
+    };
 
     public AccountTelegramToolsService(
         AccountManagementService accountManagement,
