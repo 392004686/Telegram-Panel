@@ -901,6 +901,7 @@ function hasTaskConfigForm(taskType: string) {
     || taskType === 'channel_group_publicize'
     || taskType === 'fragment_username_monitor'
     || taskType === 'auto_change_login_email'
+    || taskType === 'customer_group_engagement'
 }
 
 function emptyDraft(): TaskConfigDraft {

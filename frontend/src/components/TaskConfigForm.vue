@@ -495,6 +495,16 @@
         </el-col>
       </el-row>
     </template>
+    <template v-else-if="taskType === 'customer_group_engagement'">
+      <el-alert title="核心流程：创建群、邀请客户、发送活跃消息并标记已沟通；任务后台持久化执行。" type="info" :closable="false" class="mb-3" />
+      <el-form-item label="执行账号 ID"><el-input v-model="forms.groupEngagement.accountIdsText" placeholder="1,2,3；留空使用账号分类" /></el-form-item>
+      <el-form-item label="执行账号分类"><el-select v-model="forms.groupEngagement.accountCategoryId" clearable class="full"><el-option v-for="item in accountCategories" :key="item.id" :label="categoryLabel(item)" :value="item.id" /></el-select></el-form-item>
+      <el-form-item label="客户分类"><el-select v-model="forms.groupEngagement.customerGroupIds" multiple collapse-tags class="full"><el-option v-for="item in groupCategories" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
+      <el-row :gutter="12"><el-col :span="8"><el-form-item label="客户总数"><el-input-number v-model="forms.groupEngagement.customerLimit" :min="1" :max="10000" class="full" /></el-form-item></el-col><el-col :span="8"><el-form-item label="每群邀请数"><el-input-number v-model="forms.groupEngagement.customersPerGroup" :min="1" :max="200" class="full" /></el-form-item></el-col><el-col :span="8"><el-form-item label="最少成功邀请"><el-input-number v-model="forms.groupEngagement.minSuccessfulInvites" :min="1" :max="200" class="full" /></el-form-item></el-col></el-row>
+      <el-row :gutter="12"><el-col :span="12"><el-form-item label="分配模式"><el-select v-model="forms.groupEngagement.assignmentMode" class="full"><el-option label="队列" value="queue" /><el-option label="随机" value="random" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="并发账号数"><el-input-number v-model="forms.groupEngagement.workerCount" :min="1" :max="50" class="full" /></el-form-item></el-col></el-row>
+      <el-form-item label="群名称模板"><el-input v-model="forms.groupEngagement.groupTitleTemplate" /></el-form-item><el-form-item label="群简介模板"><el-input v-model="forms.groupEngagement.groupAboutTemplate" /></el-form-item><el-form-item label="活跃消息"><el-input v-model="forms.groupEngagement.activityMessagesText" type="textarea" :rows="4" placeholder="每行一条消息" /></el-form-item>
+      <el-row :gutter="12"><el-col :span="12"><el-form-item label="最小间隔秒"><el-input-number v-model="forms.groupEngagement.minDelaySeconds" :min="0" class="full" /></el-form-item></el-col><el-col :span="12"><el-form-item label="最大间隔秒"><el-input-number v-model="forms.groupEngagement.maxDelaySeconds" :min="0" class="full" /></el-form-item></el-col></el-row>
+    </template>
 
     <el-alert v-if="draft.validationError" :title="draft.validationError" type="warning" :closable="false" class="mt-2" />
   </div>
@@ -567,6 +577,7 @@ const forms = reactive({
   publicize: defaultPublicizeForm(),
   fragmentUsername: defaultFragmentUsernameForm() as FragmentUsernameForm,
   autoLoginEmail: defaultAutoLoginEmailForm(),
+  groupEngagement: defaultGroupEngagementForm(),
 })
 
 const textDictionaryNames = computed(() =>
@@ -650,6 +661,7 @@ function resetForms() {
   Object.assign(forms.publicize, defaultPublicizeForm())
   Object.assign(forms.fragmentUsername, defaultFragmentUsernameForm())
   Object.assign(forms.autoLoginEmail, defaultAutoLoginEmailForm())
+  Object.assign(forms.groupEngagement, defaultGroupEngagementForm())
 }
 
 function applyInitialConfig() {
@@ -784,6 +796,17 @@ function applyInitialConfig() {
     form.triggerPhrasesText = readStringArray(cfg.trigger_phrases).join('\n')
     return
   }
+  if (props.taskType === 'customer_group_engagement') {
+    const form = forms.groupEngagement
+    form.accountIdsText = readNumberArray(cfg.account_ids).join(',')
+    form.accountCategoryId = readNumber(cfg.account_category_id, 0) || undefined
+    form.customerGroupIds = normalizeIds(cfg.customer_group_ids)
+    form.customerLimit = readNumber(cfg.customer_limit, 100); form.customersPerGroup = readNumber(cfg.customers_per_group, 10)
+    form.assignmentMode = readString(cfg.assignment_mode, 'queue'); form.workerCount = readNumber(cfg.worker_count, 1)
+    form.groupTitleTemplate = readString(cfg.group_title_template, '客户沟通群 {seq}'); form.groupAboutTemplate = readString(cfg.group_about_template)
+    form.activityMessagesText = readStringArray(cfg.activity_messages).join('\n'); form.minSuccessfulInvites = readNumber(cfg.min_successful_invites, 1); form.minDelaySeconds = readNumber(cfg.min_delay_seconds, 3); form.maxDelaySeconds = readNumber(cfg.max_delay_seconds, 8)
+    return
+  }
 }
 
 function pushDraft() {
@@ -801,6 +824,8 @@ function pushDraft() {
       next = buildFragmentUsernameDraft()
     } else if (props.taskType === 'auto_change_login_email') {
       next = buildAutoLoginEmailDraft()
+    } else if (props.taskType === 'customer_group_engagement') {
+      next = buildGroupEngagementDraft()
     } else {
       next = invalidDraft('该任务类型没有专用配置表单')
     }
@@ -1190,6 +1215,17 @@ function validDraft(total: number, config: unknown): TaskConfigDraft {
 function invalidDraft(message: string): TaskConfigDraft {
   return { total: 0, config: null, canSubmit: false, validationError: message }
 }
+
+function buildGroupEngagementDraft(): TaskConfigDraft {
+  const f = forms.groupEngagement
+  const ids = f.accountIdsText.split(/[,，\s]+/).map(Number).filter(x => Number.isInteger(x) && x > 0)
+  if (!ids.length && !f.accountCategoryId) throw new Error('请选择执行账号或账号分类')
+  if (f.maxDelaySeconds < f.minDelaySeconds) throw new Error('最大间隔不能小于最小间隔')
+  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, customer_group_ids: f.customerGroupIds, customer_limit: f.customerLimit, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: uniqueLines(f.activityMessagesText), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
+  return { total: f.customerLimit, config: JSON.stringify(config), canSubmit: true, validationError: null }
+}
+
+function defaultGroupEngagementForm() { return { accountIdsText: '', accountCategoryId: undefined as number | undefined, customerGroupIds: [] as number[], customerLimit: 100, customersPerGroup: 10, assignmentMode: 'queue', workerCount: 1, groupTitleTemplate: '客户沟通群 {seq}', groupAboutTemplate: '', activityMessagesText: '欢迎加入本群', minSuccessfulInvites: 1, minDelaySeconds: 3, maxDelaySeconds: 8 } }
 
 function defaultUserChatActiveForm() {
   return {
