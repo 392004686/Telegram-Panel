@@ -34,6 +34,12 @@ public class AccountTelegramToolsService
         bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, bool IsRestricted, string? Birthday, string? Error);
 
     public async Task<UserLookupResult> LookupUserAsync(int accountId, string query, CancellationToken cancellationToken = default)
+        => await TelegramTransientConnectionRetry.ExecuteAsync(
+            () => LookupUserOnceAsync(accountId, query, cancellationToken),
+            () => _clientPool.RemoveClientAsync(accountId), cancellationToken,
+            ex => _logger.LogWarning(ex, "Lookup transport failure for account {AccountId}; rebuilding client and retrying once", accountId));
+
+    private async Task<UserLookupResult> LookupUserOnceAsync(int accountId, string query, CancellationToken cancellationToken)
     {
         query = (query ?? string.Empty).Trim();
         if (query.Length == 0)
@@ -87,6 +93,8 @@ public class AccountTelegramToolsService
             }
             return result;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (TelegramTransientConnectionRetry.ShouldRetry(ex, cancellationToken)) { throw; }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
@@ -2948,6 +2956,8 @@ public class AccountTelegramToolsService
 
     public static (string summary, string details) MapTelegramException(Exception ex)
     {
+        if (ex.Message.Contains("USERNAME_NOT_OCCUPIED", StringComparison.OrdinalIgnoreCase))
+            return ("未找到用户名", "Telegram 返回 USERNAME_NOT_OCCUPIED：本次未解析到该用户名，不是网络连接错误；保留客户原资料，可稍后复查。");
         var msg = ex.Message ?? string.Empty;
 
         if (ex is TimeoutException

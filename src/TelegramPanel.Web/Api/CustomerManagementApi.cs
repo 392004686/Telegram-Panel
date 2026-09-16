@@ -108,18 +108,22 @@ public static class CustomerManagementApi
 
     internal static void ApplyLookup(Customer customer, AccountTelegramToolsService.UserLookupResult result)
     {
-        customer.LookupStatus = result.Found ? "found" : string.IsNullOrWhiteSpace(result.Error) ? "not_found" : "error";
+        if (!result.Found) return; // Account/network/visibility errors belong to the attempt, never the customer profile.
+        customer.LookupStatus = "found";
         customer.LastLookupAt = DateTime.UtcNow; customer.UpdatedAt = DateTime.UtcNow;
         if (!result.Found) return;
         customer.LastDataSyncAt = DateTime.UtcNow;
-        customer.TelegramUserId = result.UserId; customer.AccessHash = result.AccessHash;
-        customer.Phone = string.IsNullOrWhiteSpace(result.Phone) ? null : (result.Phone.StartsWith('+') ? result.Phone : "+" + result.Phone);
-        customer.Username = string.IsNullOrWhiteSpace(result.Username) ? null : result.Username.TrimStart('@').ToLowerInvariant();
-        customer.DisplayName = IsLookupPlaceholder(result.DisplayName) ? null : result.DisplayName;
+        customer.TelegramUserId = result.UserId ?? customer.TelegramUserId;
+        customer.AccessHash = result.AccessHash ?? customer.AccessHash;
+        if (!string.IsNullOrWhiteSpace(result.Phone)) customer.Phone = result.Phone.StartsWith('+') ? result.Phone : "+" + result.Phone;
+        if (!string.IsNullOrWhiteSpace(result.Username)) customer.Username = result.Username.TrimStart('@').ToLowerInvariant();
+        if (!IsLookupPlaceholder(result.DisplayName)) customer.DisplayName = result.DisplayName;
+        else if (IsLookupPlaceholder(customer.DisplayName)) customer.DisplayName = null;
         customer.HasPhoto = result.HasPhoto; customer.ActivityStatus = result.ActivityStatus;
-        customer.LastSeenAt = result.LastSeenAt; customer.IsPremium = result.IsPremium; customer.IsBot = result.IsBot;
+        customer.LastSeenAt = result.LastSeenAt ?? customer.LastSeenAt; customer.IsPremium = result.IsPremium; customer.IsBot = result.IsBot;
         customer.IsVerified = result.IsVerified; customer.IsScam = result.IsScam; customer.IsFake = result.IsFake;
-        customer.IsDeleted = result.IsDeleted; customer.IsRestricted = result.IsRestricted; customer.Birthday = result.Birthday;
+        customer.IsDeleted = result.IsDeleted; customer.IsRestricted = result.IsRestricted;
+        if (!string.IsNullOrWhiteSpace(result.Birthday)) customer.Birthday = result.Birthday;
     }
 
     private static bool IsLookupPlaceholder(string? value) =>
@@ -127,7 +131,7 @@ public static class CustomerManagementApi
         || value.Trim().Equals("Lookup Contact", StringComparison.OrdinalIgnoreCase)
         || value.Trim().Equals("Telegram Lookup", StringComparison.OrdinalIgnoreCase);
 
-    private static async Task<IResult> CreateLookupBatchAsync(CustomerLookupBatchCreateRequest request, AppDbContext db, BatchTaskManagementService tasks, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateLookupBatchAsync(CustomerLookupBatchCreateRequest request, AppDbContext db, BatchTaskManagementService tasks, AccountTelegramToolsService tools, CancellationToken cancellationToken)
     {
         var normalized = new List<(string Raw, string Value)>();
         foreach (var raw in request.Targets ?? [])
@@ -138,6 +142,7 @@ public static class CustomerManagementApi
             if (normalized.All(x => !string.Equals(x.Value, value, StringComparison.OrdinalIgnoreCase))) normalized.Add((raw.Trim(), value));
         }
         if (normalized.Count == 0) return Results.BadRequest(new { message = "请输入查询目标" });
+        if (request.Mode == "realtime" && normalized.Count > 10) return Results.BadRequest(new { message = "实时查询最多 10 个目标；更多目标请发送后台任务" });
         var accountIds = (request.AccountIds ?? []).Where(x => x > 0).Distinct().ToList();
         if (request.AccountCategoryId.HasValue)
             accountIds = await db.Accounts.AsNoTracking().Where(x => x.CategoryId == request.AccountCategoryId && x.IsActive && x.TelegramStatusOk != false).Select(x => x.Id).ToListAsync(cancellationToken);
@@ -148,6 +153,17 @@ public static class CustomerManagementApi
         db.CustomerLookupBatches.Add(batch);
         for (var i = 0; i < normalized.Count; i++) db.CustomerLookupItems.Add(new CustomerLookupItem { Batch = batch, RawTarget = normalized[i].Raw, NormalizedTarget = normalized[i].Value, Sequence = i + 1 });
         await db.SaveChangesAsync(cancellationToken);
+        if (batch.Mode == "realtime")
+        {
+            try { await TelegramPanel.Web.Services.CustomerLookupTaskHandler.ExecuteBatchAsync(batch.Id, db, tools, cancellationToken); }
+            catch (OperationCanceledException)
+            {
+                batch.Status = "interrupted"; batch.CompletedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(CancellationToken.None);
+                throw;
+            }
+            return Results.Ok(new { batchId = batch.Id, taskId = (int?)null });
+        }
         var task = await tasks.CreateTaskAsync(new BatchTask { Name = batch.Name, TaskType = BatchTaskTypes.CustomerLookup, OwnerModuleId = "builtin.tasks", ExecutionKind = "batch", Total = batch.Total, Config = JsonSerializer.Serialize(new { batchId = batch.Id }) });
         batch.BatchTaskId = task.Id;
         await db.SaveChangesAsync(cancellationToken);

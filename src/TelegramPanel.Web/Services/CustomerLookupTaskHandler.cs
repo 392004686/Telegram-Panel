@@ -20,6 +20,14 @@ public sealed class CustomerLookupTaskHandler : IModuleTaskHandler
             throw new InvalidOperationException("查询任务缺少 batchId");
         var db = host.Services.GetRequiredService<AppDbContext>();
         var tools = host.Services.GetRequiredService<AccountTelegramToolsService>();
+        await ExecuteBatchAsync(batchId, db, tools, cancellationToken,
+            () => host.IsStillRunningAsync(cancellationToken),
+            (completed, failed) => host.UpdateProgressAsync(completed, failed, cancellationToken));
+    }
+
+    internal static async Task ExecuteBatchAsync(int batchId, AppDbContext db, AccountTelegramToolsService tools,
+        CancellationToken cancellationToken, Func<Task<bool>>? isRunning = null, Func<int, int, Task>? progress = null)
+    {
         var batch = await db.CustomerLookupBatches.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == batchId, cancellationToken)
             ?? throw new InvalidOperationException($"查询批次不存在：{batchId}");
         var accountIds = JsonSerializer.Deserialize<List<int>>(batch.AccountIdsJson) ?? [];
@@ -32,9 +40,16 @@ public sealed class CustomerLookupTaskHandler : IModuleTaskHandler
         foreach (var item in pending)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!await host.IsStillRunningAsync(cancellationToken)) return;
+            if (isRunning != null && !await isRunning()) return;
             item.AccountId = accountIds[index++ % accountIds.Count]; item.StartedAt = DateTime.UtcNow; item.AttemptCount++;
-            var result = await tools.LookupUserAsync(item.AccountId.Value, item.NormalizedTarget, cancellationToken);
+            AccountTelegramToolsService.UserLookupResult result;
+            try { result = await tools.LookupUserAsync(item.AccountId.Value, item.NormalizedTarget, cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                var (summary, details) = AccountTelegramToolsService.MapTelegramException(ex);
+                result = new(false, item.NormalizedTarget, null, null, null, null, null, false, "unknown", null, false, false, false, false, false, false, false, null, $"{summary}：{details}（瞬时连接错误已最多重试一次）");
+            }
             item.CompletedAt = DateTime.UtcNow; item.TelegramUserId = result.UserId; item.AccessHash = result.AccessHash; item.Phone = result.Phone;
             item.Username = result.Username; item.DisplayName = result.DisplayName; item.HasPhoto = result.HasPhoto; item.ActivityStatus = result.ActivityStatus;
             item.LastSeenAt = result.LastSeenAt; item.IsPremium = result.IsPremium; item.IsBot = result.IsBot; item.IsVerified = result.IsVerified;
@@ -43,13 +58,13 @@ public sealed class CustomerLookupTaskHandler : IModuleTaskHandler
                 (result.UserId.HasValue && x.TelegramUserId == result.UserId)
                 || (item.NormalizedTarget.StartsWith("+") && x.Phone == item.NormalizedTarget)
                 || (item.NormalizedTarget.StartsWith("@") && x.Username == item.NormalizedTarget.Substring(1).ToLower()), cancellationToken);
-            item.ExistingCustomer = customer != null; item.CustomerId = customer?.Id;
-            if (customer != null) CustomerManagementApi.ApplyLookup(customer, result);
+            item.ExistingCustomer = result.Found && customer != null; item.CustomerId = result.Found ? customer?.Id : null;
+            if (result.Found && customer != null) CustomerManagementApi.ApplyLookup(customer, result);
             item.Status = result.Found ? "found" : string.IsNullOrWhiteSpace(result.Error) ? "not_found" : "failed";
             batch.Completed++; if (item.Status == "found") batch.Found++; else if (item.Status == "not_found") batch.NotFound++; else batch.Failed++;
             batch.LastHeartbeatAt = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
-            await host.UpdateProgressAsync(batch.Completed, batch.Failed, cancellationToken);
+            if (progress != null) await progress(batch.Completed, batch.Failed);
             if (batch.Completed < batch.Total && batch.MaxDelaySeconds > 0)
             {
                 var seconds = Random.Shared.Next(batch.MinDelaySeconds, batch.MaxDelaySeconds + 1);
