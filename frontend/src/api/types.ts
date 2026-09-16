@@ -1111,7 +1111,7 @@ export interface BotChannelDetail {
 export interface CustomerGroupOption { id: number; name: string; description?: string | null; customerCount?: number }
 export interface CustomerImportBatch { id: number; name: string; total: number; imported: number; duplicates: number; invalid: number; createdAt: string }
 export interface CustomerItem {
-  id: number; phone?: string | null; username?: string | null; telegramUserId?: number | null; displayName?: string | null; nickname?: string | null
+  id: number; phone?: string | null; username?: string | null; telegramUserId?: number | null; displayName?: string | null
   hasPhoto: boolean; activityStatus: string; lastSeenAt?: string | null; isPremium: boolean; isBot: boolean; isVerified: boolean
   isScam: boolean; isFake: boolean; isDeleted: boolean; birthday?: string | null
   lookupStatus: string; interactionStatus: string; remark?: string | null; lastLookupAt?: string | null; lastDataSyncAt?: string | null; createdAt: string

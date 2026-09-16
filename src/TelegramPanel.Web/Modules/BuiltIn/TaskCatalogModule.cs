@@ -44,9 +44,9 @@ public sealed class TaskCatalogModule : ITelegramPanelModule, IModuleTaskProvide
         yield return new ModuleTaskDefinition
         {
             Category = "user", TaskType = BatchTaskTypes.CustomerGroupEngagement, DisplayName = "批量建群邀请客户并执行活跃",
-            Description = "选择执行账号和客户分类，创建群组、邀请客户、发送活跃消息，成功后标记已沟通。支持暂停、继续、取消和重启恢复。", Icon = Icons.Material.Filled.Groups,
+            Description = "选择执行账号和客户分类，创建群组、邀请客户、发送活跃消息，成功后标记已沟通。支持暂停、继续、取消和重启恢复。支持并发执行和详细错误日志。", Icon = Icons.Material.Filled.Groups,
             EditorComponentType = typeof(TelegramPanel.Web.Components.Dialogs.GenericJsonTaskEditor).AssemblyQualifiedName ?? "",
-            TaskCenter = new ModuleTaskCenterCapabilities { CanPause = true, CanResume = true, CanEdit = false, CanRerun = true }, Order = 102
+            TaskCenter = new ModuleTaskCenterCapabilities { CanPause = true, CanResume = true, CanEdit = false, CanRerun = true }, Order = -100
         };
 
         yield return new ModuleTaskDefinition
