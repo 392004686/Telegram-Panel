@@ -225,3 +225,17 @@ git merge upstream/main
 - 本批次只完成可实施设计并同步仓库，执行器代码、迁移、专用任务表单与自动化测试仍待后续阶段实现。
 - 部署验收：设计提交 `678beb3` 已部署至 5000，镜像 `telegram-panel:multi-user-ui-678beb3`（`sha256:1e8ec644efa8739f7970b00b4e3d8d11512327d50d9142fb8459b158ac90bff2`）；5000 `/healthz` 与 7000 作者版 `/healthz` 均返回 HTTP 200。
 - 部署前数据备份：`/root/telegram-panel-data-20260915-163010.tar.gz`，SHA-256 `afd1967d5c8a0302bfc85845b6df70612559903fbbb66e7885e8eae1a3984571`；服务器时间显示为 2026-09-15。
+
+### 2026-09-16 客户筛选持久化与建群活跃任务
+
+- 客户列表操作栏限制在内容宽度内，新增“全选本页/取消全选”，并复用账号列表固定操作列的背景、层级和实体遮罩方案。
+- 客户新增昵称和最后数据同步字段；迁移会清理已有 `Lookup Contact` / `Telegram Lookup` 姓名。
+- 成功查询时按本次 Telegram 资料完整覆盖现有客户，空用户名、手机号、姓名和生日不再保留陈旧数据；失败查询不会更新最后数据同步时间。
+- 新增 `CustomerLookupBatches` / `CustomerLookupItems`，实时查询与发送任务统一先持久化并由 `customer_lookup` 后台 handler 执行。
+- 查询页执行账号升级为表格多选，展示昵称、用户名、Telegram 状态和最后数据同步；“移出选择”只影响本次队列。
+- 查询页新增历史批次、明细查看、失败重试和记录删除，页面关闭后结果及进度不丢失。
+- 任务中心注册 `customer_group_engagement`，执行建群、邀请客户、发送文字活跃消息并在成功后标记已沟通；运行游标保存到任务配置用于重启续跑。
+- 数据库迁移：`20260916100000_AddCustomerLookupPersistence`。
+- 前端 TypeScript/Vite 生产构建通过，客户管理测试 4/4；服务器 Docker .NET Release publish 通过，隔离空库启动及迁移健康检查通过。
+- 部署：提交 `d756dd8`，镜像 `telegram-panel:multi-user-ui-d756dd8`（`sha256:25239c8f24f6007f0aeb54926f9feafc6e5b5abc45d089ec50cbb4509224a386`）；5000 与 7000 `/healthz` 均为 HTTP 200。
+- 部署前备份：`/root/telegram-panel-data-20260915-170219.tar.gz`，SHA-256 `8e6e2838b45e8c5bb32bbb724a77d9c2ad0ff4d8700c1e201007c15d20decb59`。

@@ -314,3 +314,13 @@
 - 5000 镜像：`telegram-panel:multi-user-ui-678beb3`，镜像 ID：`sha256:1e8ec644efa8739f7970b00b4e3d8d11512327d50d9142fb8459b158ac90bff2`。
 - 部署前备份：`/root/telegram-panel-data-20260915-163010.tar.gz`，SHA-256：`afd1967d5c8a0302bfc85845b6df70612559903fbbb66e7885e8eae1a3984571`。
 - 5000 与 7000 `/healthz` 均为 HTTP 200；7000 继续运行 `ghcr.io/moeacgx/telegram-panel:latest`，未修改。
+
+## 11. 2026-09-16 功能实现补充
+
+- 客户列表已新增全选本页、取消全选、昵称、最后数据同步，并复用账号列表固定操作列样式修复悬停/横向滚动覆盖。
+- 客户成功查询改为本次 Telegram 资料覆盖合同；迁移清理 `Lookup Contact` / `Telegram Lookup`，失败查询不写最后数据同步。
+- 账号筛选已改为数据库持久批次和真实后台任务，执行账号支持多选及移出选择；页面新增历史批次、明细、失败重试和删除记录。
+- 任务中心已注册 `customer_lookup` 和 `customer_group_engagement`。后者已有建群、邀请、文字活跃和标记已沟通的执行闭环；图片/视频组合活跃、专用可视化编辑器以及独立客户租约表仍按设计文档继续增强。
+- 迁移：`20260916100000_AddCustomerLookupPersistence`。
+- 生产提交：`d756dd8`；5000 镜像 `telegram-panel:multi-user-ui-d756dd8`，镜像 ID `sha256:25239c8f24f6007f0aeb54926f9feafc6e5b5abc45d089ec50cbb4509224a386`。
+- 备份：`/root/telegram-panel-data-20260915-170219.tar.gz`，SHA-256 `8e6e2838b45e8c5bb32bbb724a77d9c2ad0ff4d8700c1e201007c15d20decb59`；5000/7000 均健康。
