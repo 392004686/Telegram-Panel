@@ -1,0 +1,157 @@
+#!/usr/bin/expect -f
+# 自动化远程部署脚本
+
+set timeout 300
+set server "16.216.65.42"
+set user "root"
+set password "1UWvPrUJcUvi"
+
+puts "=========================================="
+puts "  Telegram Panel 远程部署"
+puts "=========================================="
+puts "服务器: $server"
+puts ""
+
+# 连接到服务器
+spawn ssh -o StrictHostKeyChecking=no $user@$server
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "\n连接成功\n"
+    }
+    timeout {
+        puts "连接超时"
+        exit 1
+    }
+}
+
+# 切换到项目目录
+send "cd /opt/Telegram-Panel\r"
+expect "# "
+
+# 显示当前状态
+send "pwd\r"
+expect "# "
+send "git branch --show-current\r"
+expect "# "
+
+puts "\n=========================================="
+puts "  步骤 1: 更新代码"
+puts "=========================================="
+
+send "git fetch origin\r"
+expect "# "
+
+send "git checkout codex/multi-user-ui\r"
+expect "# "
+
+send "git pull origin codex/multi-user-ui\r"
+expect "# "
+
+send "git log -1 --oneline\r"
+expect "# "
+
+puts "\n=========================================="
+puts "  步骤 2: 备份数据"
+puts "=========================================="
+
+send "TIMESTAMP=\$(date +%Y%m%d-%H%M%S)\r"
+expect "# "
+
+send "BACKUP_FILE=\"/root/telegram-panel-data-\${TIMESTAMP}.tar.gz\"\r"
+expect "# "
+
+send "tar -czf \"\$BACKUP_FILE\" docker-data/\r"
+expect "# "
+
+send "ls -lh \$BACKUP_FILE\r"
+expect "# "
+
+send "sha256sum \$BACKUP_FILE\r"
+expect "# "
+
+puts "\n=========================================="
+puts "  步骤 3: 构建Docker镜像"
+puts "=========================================="
+
+send "COMMIT_HASH=\$(git rev-parse --short HEAD)\r"
+expect "# "
+
+send "IMAGE_TAG=\"telegram-panel:multi-user-ui-\${COMMIT_HASH}\"\r"
+expect "# "
+
+send "echo \"构建镜像: \$IMAGE_TAG\"\r"
+expect "# "
+
+send "docker build -t \"\$IMAGE_TAG\" -t \"telegram-panel:latest\" .\r"
+expect {
+    "Successfully built" {
+        puts "\n镜像构建成功"
+    }
+    "Successfully tagged" {
+        puts "\n镜像标记成功"
+        exp_continue
+    }
+    "# " {
+        puts "\n构建完成"
+    }
+    timeout {
+        puts "构建超时"
+        exit 1
+    }
+}
+
+puts "\n=========================================="
+puts "  步骤 4: 停止旧容器"
+puts "=========================================="
+
+send "docker compose stop telegram-panel\r"
+expect "# "
+
+send "docker compose rm -f telegram-panel\r"
+expect "# "
+
+puts "\n=========================================="
+puts "  步骤 5: 更新配置并启动"
+puts "=========================================="
+
+send "sed -i 's|^TP_IMAGE=.*|TP_IMAGE=telegram-panel:latest|' .env 2>/dev/null || echo 'TP_IMAGE=telegram-panel:latest' > .env\r"
+expect "# "
+
+send "grep -q '^TP_UPDATE_MODE=' .env && sed -i 's/^TP_UPDATE_MODE=.*/TP_UPDATE_MODE=image/' .env || echo 'TP_UPDATE_MODE=image' >> .env\r"
+expect "# "
+
+send "docker compose up -d telegram-panel\r"
+expect "# "
+
+send "sleep 10\r"
+expect "# "
+
+puts "\n=========================================="
+puts "  步骤 6: 验证部署"
+puts "=========================================="
+
+send "docker compose ps telegram-panel\r"
+expect "# "
+
+send "docker inspect telegram-panel --format '{{.Config.Image}}'\r"
+expect "# "
+
+send "curl -sf http://127.0.0.1:5000/healthz && echo 'Health check: OK' || echo 'Health check: FAILED'\r"
+expect "# "
+
+send "docker logs --tail 50 telegram-panel\r"
+expect "# "
+
+puts "\n=========================================="
+puts "  部署完成！"
+puts "=========================================="
+puts "访问地址: http://$server:5000"
+puts "=========================================="
+
+send "exit\r"
+expect eof
