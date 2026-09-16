@@ -48,8 +48,11 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         if (config.AccountIds.Count == 0)
         {
-            logger.LogError("没有可用执行账号");
-            throw new InvalidOperationException("没有可用执行账号");
+            var scope = config.AccountCategoryId.HasValue
+                ? $"账号分类 #{config.AccountCategoryId.Value} 中没有启用且 Telegram 状态可用的执行账号"
+                : "没有启用且 Telegram 状态可用的执行账号";
+            logger.LogError("{Message}", scope);
+            throw new InvalidOperationException(scope);
         }
 
         // 加载客户，按客户分类统计
