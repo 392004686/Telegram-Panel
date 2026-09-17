@@ -503,9 +503,33 @@
       <el-row :gutter="12"><el-col :span="12"><el-form-item label="每群邀请数"><el-input-number v-model="forms.groupEngagement.customersPerGroup" :min="1" :max="200" class="full" /></el-form-item></el-col><el-col :span="12"><el-form-item label="最少成功邀请"><el-input-number v-model="forms.groupEngagement.minSuccessfulInvites" :min="1" :max="200" class="full" /></el-form-item></el-col></el-row>
       <el-row :gutter="12"><el-col :span="12"><el-form-item label="分配模式"><el-select v-model="forms.groupEngagement.assignmentMode" class="full"><el-option label="队列" value="queue" /><el-option label="随机" value="random" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="并发账号数"><el-input-number v-model="forms.groupEngagement.workerCount" :min="1" :max="50" class="full" /></el-form-item></el-col></el-row>
       <el-form-item label="群名称模板"><el-input v-model="forms.groupEngagement.groupTitleTemplate" /></el-form-item><el-form-item label="群简介模板"><el-input v-model="forms.groupEngagement.groupAboutTemplate" /></el-form-item>
-      <el-form-item label="文字字典"><el-select v-model="forms.groupEngagement.textDictionaryName" clearable class="full" placeholder="选择文字字典"><el-option v-for="name in textDictionaryNames" :key="name" :label="name" :value="name" /></el-select></el-form-item>
-      <el-form-item label="图片字典"><el-select v-model="forms.groupEngagement.imageDictionaryName" clearable class="full" placeholder="选择图片字典"><el-option v-for="name in imageDictionaryNames" :key="name" :label="name" :value="name" /></el-select></el-form-item>
-      <el-form-item label="活跃消息"><el-input v-model="forms.groupEngagement.activityMessagesText" type="textarea" :rows="4" placeholder="每行一条文字消息，默认 Hello" /></el-form-item>
+      <el-alert title="活跃消息和「账号持续活跃」一样按规则发送，可与建群邀请一起执行。每条规则都能插入文字字典变量，也可选图片字典。" type="success" :closable="false" class="mb-3" />
+      <div class="message-rule-section">
+        <div class="message-rule-toolbar">
+          <div><strong>活跃消息规则</strong><div class="form-hint no-offset compact">规则按顺序发送；文字支持 {time} 和文字字典变量，图片走当前规则的图片字典。</div></div>
+          <el-button type="primary" plain size="small" @click="addGroupEngagementRule()">添加规则</el-button>
+        </div>
+        <div v-for="(rule, index) in forms.groupEngagement.messageRules" :key="rule.id" class="message-rule-card">
+          <div class="message-rule-card-head"><span>规则 {{ index + 1 }}</span><el-button link type="danger" :disabled="forms.groupEngagement.messageRules.length <= 1" @click="removeGroupEngagementRule(index)">删除</el-button></div>
+          <el-form-item label="消息内容"><el-input v-model="rule.text" type="textarea" :rows="4" placeholder="可写多行，支持 {time} 和文字字典变量；留空时可只发图片。" /></el-form-item>
+          <el-form-item label="插入文字字典">
+            <div class="dict-insert">
+              <el-select v-model="rule.insertDictionaryName" class="full" clearable placeholder="选择要插入的文字字典">
+                <el-option v-for="name in textDictionaryNames" :key="name" :label="name" :value="name" />
+              </el-select>
+              <el-button @click="insertGroupEngagementDictionary(rule)">插入</el-button>
+            </div>
+          </el-form-item>
+          <el-form-item label="图片字典">
+            <el-select v-model="rule.imageDictionaryName" class="full" placeholder="不发送图片">
+              <el-option label="不发送图片" value="" />
+              <el-option v-for="name in imageDictionaryNames" :key="name" :label="name" :value="name" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <el-form-item label="批量追加"><el-input v-model="forms.groupEngagement.bulkRulesText" type="textarea" :rows="3" placeholder="一行一条文字消息，点击追加后生成多条规则。" /></el-form-item>
+        <div class="form-hint"><el-button size="small" @click="appendGroupEngagementLineRules">按行追加为规则</el-button> 可用文本变量：{{ textVariableHint }}</div>
+      </div>
       <el-row :gutter="12"><el-col :span="12"><el-form-item label="最小间隔秒"><el-input-number v-model="forms.groupEngagement.minDelaySeconds" :min="0" class="full" /></el-form-item></el-col><el-col :span="12"><el-form-item label="最大间隔秒"><el-input-number v-model="forms.groupEngagement.maxDelaySeconds" :min="0" class="full" /></el-form-item></el-col></el-row>
     </template>
 
@@ -539,6 +563,7 @@ interface UserChatActiveMessageRuleForm {
   id: string
   text: string
   imageDictionaryName: string
+  insertDictionaryName?: string
 }
 
 const props = defineProps<{
@@ -811,7 +836,13 @@ function applyInitialConfig() {
     form.customersPerGroup = readNumber(cfg.customers_per_group, 10)
     form.assignmentMode = readString(cfg.assignment_mode, 'queue'); form.workerCount = readNumber(cfg.worker_count, 1)
     form.groupTitleTemplate = readString(cfg.group_title_template, '客户沟通群 {seq}'); form.groupAboutTemplate = readString(cfg.group_about_template)
-    form.textDictionaryName = readString(cfg.text_dictionary_name); form.imageDictionaryName = readString(cfg.image_dictionary_name); form.activityMessagesText = readStringArray(cfg.activity_messages).join('\n'); form.minSuccessfulInvites = readNumber(cfg.min_successful_invites, 1); form.minDelaySeconds = readNumber(cfg.min_delay_seconds, 3); form.maxDelaySeconds = readNumber(cfg.max_delay_seconds, 8)
+    form.minSuccessfulInvites = readNumber(cfg.min_successful_invites, 1); form.minDelaySeconds = readNumber(cfg.min_delay_seconds, 3); form.maxDelaySeconds = readNumber(cfg.max_delay_seconds, 8)
+    const legacyMessages = readStringArray(cfg.activity_messages)
+    const rules = Array.isArray(cfg.message_rules) ? cfg.message_rules : []
+    form.messageRules = rules.length
+      ? rules.map((rule: any) => defaultUserChatActiveMessageRule(readString(rule?.text), extractDictionaryName(readString(rule?.image_dictionary_token))))
+      : (legacyMessages.length ? legacyMessages.map((text) => defaultUserChatActiveMessageRule(text)) : [defaultUserChatActiveMessageRule('Hello')])
+    form.bulkRulesText = ""
     return
   }
 }
@@ -1235,11 +1266,31 @@ function buildGroupEngagementDraft(): TaskConfigDraft {
   const customerGroupNames = f.customerGroupIds
     .map((id) => customerGroups.value.find((x) => x.id === id)?.name ?? '')
     .filter(Boolean)
-  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, text_dictionary_name: f.textDictionaryName || null, image_dictionary_name: f.imageDictionaryName || null, activity_messages: uniqueLines(f.activityMessagesText || 'Hello'), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
+  const messageRules = normalizeUserChatActiveMessageRules(f.messageRules)
+  if (messageRules.length === 0) throw new Error("请至少添加一条活跃消息规则")
+  for (const rule of messageRules) {
+    if (rule.imageDictionaryName && !imageDictionaryNames.value.includes(rule.imageDictionaryName)) throw new Error("请选择有效的图片字典")
+  }
+  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: messageRules.map((x) => x.text).filter(Boolean), message_rules: messageRules.map((rule) => ({ text: rule.text, image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null })), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
   return { total: Math.max(1, selectedCustomerCount.value), config: JSON.stringify(config), canSubmit: true, validationError: null }
 }
 
-function defaultGroupEngagementForm() { return { accountIdsText: '', accountCategoryId: undefined as number | undefined, customerGroupIds: [] as number[], customersPerGroup: 10, assignmentMode: 'queue', workerCount: 1, groupTitleTemplate: 'Group {seq}', groupAboutTemplate: '', textDictionaryName: '', imageDictionaryName: '', activityMessagesText: 'Hello', minSuccessfulInvites: 1, minDelaySeconds: 3, maxDelaySeconds: 8 } }
+function defaultGroupEngagementForm() { return { accountIdsText: '', accountCategoryId: undefined as number | undefined, customerGroupIds: [] as number[], customersPerGroup: 10, assignmentMode: 'queue', workerCount: 1, groupTitleTemplate: 'Group {seq}', groupAboutTemplate: '', messageRules: [defaultUserChatActiveMessageRule('Hello')], bulkRulesText: '', minSuccessfulInvites: 1, minDelaySeconds: 3, maxDelaySeconds: 8 } }
+function addGroupEngagementRule() { forms.groupEngagement.messageRules.push(defaultUserChatActiveMessageRule()) }
+function removeGroupEngagementRule(index: number) { if (forms.groupEngagement.messageRules.length <= 1) return; forms.groupEngagement.messageRules.splice(index, 1) }
+function appendGroupEngagementLineRules() {
+  const lines = parseLines(forms.groupEngagement.bulkRulesText)
+  if (lines.length === 0) { ElMessage.warning("请先填写要追加的消息文字"); return }
+  const rules = forms.groupEngagement.messageRules
+  if (rules.length === 1 && !rules[0].text.trim() && !rules[0].imageDictionaryName.trim()) rules.splice(0, 1)
+  for (const line of lines) rules.push(defaultUserChatActiveMessageRule(line))
+  forms.groupEngagement.bulkRulesText = ""
+}
+function insertGroupEngagementDictionary(rule: UserChatActiveMessageRuleForm & { insertDictionaryName?: string }) {
+  const name = (rule.insertDictionaryName || "").trim()
+  if (!name) { ElMessage.warning("请先选择文字字典"); return }
+  rule.text = (rule.text || "") + (rule.text && !rule.text.endsWith(" ") && !rule.text.endsWith("\n") ? " " : "") + `{${name}}`
+}
 
 function defaultUserChatActiveForm() {
   return {
@@ -1281,6 +1332,7 @@ function defaultUserChatActiveMessageRule(text = '', imageDictionaryName = ''): 
     id: newScopeId(),
     text,
     imageDictionaryName,
+    insertDictionaryName: '',
   }
 }
 
@@ -1846,4 +1898,9 @@ const AvatarFields = defineComponent({
   margin-top: 8px;
   word-break: break-all;
 }
+</style>
+
+<style scoped>
+.dict-insert{display:flex;gap:8px;align-items:center}
+.dict-insert .full{flex:1}
 </style>

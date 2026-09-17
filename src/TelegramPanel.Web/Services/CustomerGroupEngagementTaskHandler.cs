@@ -269,15 +269,28 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         throw new InvalidOperationException(resolved.Error ?? "无法解析新建群组");
                     }
 
-                    foreach (var message in config.ActivityMessages.Where(x => !string.IsNullOrWhiteSpace(x)))
+                    var templateRendering = host.Services.GetRequiredService<TemplateRenderingService>();
+                    var assetStorage = host.Services.GetRequiredService<ImageAssetStorageService>();
+                    var rules = config.MessageRules.Count > 0
+                        ? config.MessageRules
+                        : config.ActivityMessages.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => new MessageRule { Text = x }).ToList();
+                    if (rules.Count == 0) rules.Add(new MessageRule { Text = "Hello" });
+                    foreach (var rule in rules)
                     {
-                        var sent = await tools.SendMessageToResolvedChatAsync(accountId, resolved.Target, message, cancellationToken: ct);
-                        if (!sent.Success)
+                        var text = string.IsNullOrWhiteSpace(rule.Text) ? string.Empty : await templateRendering.RenderTextTemplateAsync(rule.Text, ct);
+                        if (!string.IsNullOrWhiteSpace(rule.ImageDictionaryToken))
                         {
-                            logger.LogError("发送活跃消息失败: {Error}", sent.Error);
-                            throw new InvalidOperationException(sent.Error ?? "活跃消息发送失败");
+                            var asset = await templateRendering.ResolveImageTemplateAsync(rule.ImageDictionaryToken, ct);
+                            await using var image = await assetStorage.OpenReadAsync(asset.AssetPath, ct);
+                            var sent = await tools.SendPhotoToResolvedChatAsync(accountId, resolved.Target, image, asset.FileName, text, null, ct);
+                            if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃图片发送失败");
                         }
-                        logger.LogInformation("成功发送活跃消息: {Message}", message.Substring(0, Math.Min(50, message.Length)));
+                        else
+                        {
+                            if (string.IsNullOrWhiteSpace(text)) continue;
+                            var sent = await tools.SendMessageToResolvedChatAsync(accountId, resolved.Target, text, cancellationToken: ct);
+                            if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃消息发送失败");
+                        }
                         await Delay(config, ct);
                     }
 
@@ -492,6 +505,9 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
         [JsonPropertyName("activity_messages")]
         public List<string> ActivityMessages { get; set; } = [];
 
+        [JsonPropertyName("message_rules")]
+        public List<MessageRule> MessageRules { get; set; } = [];
+
         [JsonPropertyName("min_delay_seconds")]
         public int MinDelaySeconds { get; set; } = 3;
 
@@ -503,5 +519,14 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         [JsonPropertyName("completed_customer_ids")]
         public HashSet<int> CompletedCustomerIds { get; set; } = [];
+    }
+
+    public sealed class MessageRule
+    {
+        [JsonPropertyName("text")]
+        public string? Text { get; set; }
+
+        [JsonPropertyName("image_dictionary_token")]
+        public string? ImageDictionaryToken { get; set; }
     }
 }

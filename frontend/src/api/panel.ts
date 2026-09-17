@@ -563,7 +563,7 @@ export const panelApi = {
   transferGroupOwner: (id: number, payload: { target: string; password?: string | null; accountId?: number | null; targetAccountId?: number | null }) =>
     api.post<OperationResult>(`/groups/${id}/transfer-owner`, payload, { timeout: 120_000 }).then((r) => r.data),
 
-  customers: (params: { page: number; pageSize: number; search?: string; status?: string; groupId?: number; batchId?: number }) =>
+  customers: (params: { page: number; pageSize: number; search?: string; status?: string; interaction?: string; groupId?: number; batchId?: number }) =>
     api.get<PagedResult<CustomerItem>>('/customers', { params }).then((r) => r.data),
   customer: (id: number) => api.get<CustomerDetail>(`/customers/${id}`).then((r) => r.data),
   importCustomers: (payload: { values: string; batchName?: string; groupId?: number | null; newGroupName?: string; sourceName?: string }) =>
@@ -571,14 +571,15 @@ export const panelApi = {
   deleteCustomer: (id: number) => api.delete<OperationResult>(`/customers/${id}`).then((r) => r.data),
   lookupCustomer: (id: number, accountId: number) => api.post<UserLookupResult>(`/customers/${id}/lookup`, { accountId }, { timeout: 120_000 }).then((r) => r.data),
   lookupNewCustomer: (query: string, accountId: number) => api.post<CustomerLookupEnvelope>('/customers/lookup', { query, accountId }, { timeout: 120_000 }).then((r) => r.data),
-  batchCustomers: (ids: number[], action: 'delete' | 'set_group', groupId?: number | null) => api.post<{ success: boolean; affected: number }>('/customers/batch', { ids, action, groupId }).then((r) => r.data),
+  batchCustomers: (ids: number[], action: 'delete' | 'set_group' | 'set_interaction', groupId?: number | null, interactionStatus?: string | null) => api.post<{ success: boolean; affected: number }>('/customers/batch', { ids, action, groupId, interactionStatus }).then((r) => r.data),
   customerGroups: () => api.get<CustomerGroupOption[]>('/customer-groups').then((r) => r.data),
   createCustomerGroup: (payload: { name: string; description?: string }) => api.post<CustomerGroupOption>('/customer-groups', payload).then((r) => r.data),
   updateCustomerGroup: (id: number, payload: { name: string; description?: string }) => api.put<CustomerGroupOption>(`/customer-groups/${id}`, payload).then((r) => r.data),
   deleteCustomerGroup: (id: number) => api.delete<OperationResult>(`/customer-groups/${id}`).then((r) => r.data),
   customerImportBatches: () => api.get<CustomerImportBatch[]>('/customer-import-batches').then((r) => r.data),
   createCustomerLookupBatch: (payload: { name?:string; mode:string; targets:string[]; accountIds:number[]; accountCategoryId?:number|null; targetOrder:string; minDelaySeconds:number; maxDelaySeconds:number }) => api.post<{batchId:number;taskId:number|null}>('/customer-lookup-batches', payload).then(r=>r.data),
-  customerLookupBatches: (params:{page:number;pageSize:number;status?:string}) => api.get<PagedResult<CustomerLookupBatch>>('/customer-lookup-batches',{params}).then(r=>r.data),
+  customerLookupBatches: (params:{page:number;pageSize:number;status?:string;search?:string}) => api.get<PagedResult<CustomerLookupBatch>>('/customer-lookup-batches',{params}).then(r=>r.data),
+  batchDeleteCustomerLookupBatches: (ids:number[]) => api.post<{success:boolean;affected:number}>('/customer-lookup-batches/batch-delete',{ids}).then(r=>r.data),
   customerLookupBatch: (id:number) => api.get<{batch:CustomerLookupBatch;items:CustomerLookupItem[]}>(`/customer-lookup-batches/${id}`).then(r=>r.data),
   deleteCustomerLookupBatch: (id:number) => api.delete<OperationResult>(`/customer-lookup-batches/${id}`).then(r=>r.data),
   retryCustomerLookupBatch: (id:number) => api.post<{batchId:number;taskId:number}>(`/customer-lookup-batches/${id}/retry`).then(r=>r.data),

@@ -7,7 +7,7 @@
       <div class="brand-mark"><span class="material-icons">send</span></div>
       <div class="app-title">
         <strong>Telegram X</strong>
-        <small>Operations Console</small>
+        <small>Operations Console · v{{ appReleaseVersion }}</small>
       </div>
       <div class="appbar-spacer" />
       <el-button link class="appbar-icon appbar-secondary" title="重启面板" :disabled="restartPanelLoading" @click="restartPanel">
@@ -127,10 +127,12 @@ import { panelApi } from '@/api/panel'
 import type { ModuleNavItem } from '@/api/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import MenuIcon from '@/components/MenuIcon.vue'
+import { APP_RELEASE_VERSION } from '@/config/appVersion'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const appReleaseVersion = APP_RELEASE_VERSION
 const collapsed = ref(false)
 const drawerOpen = ref(false)
 const isMobile = ref(window.innerWidth < 780)

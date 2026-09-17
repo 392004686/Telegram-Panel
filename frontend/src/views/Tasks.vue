@@ -137,10 +137,17 @@
       <template #header>
         <div class="card-header">
           <span>历史任务 ({{ historyTasks.length }})</span>
-          <span class="cell-sub">当前已加载 {{ tasks.length }} 条任务记录</span>
+          <div class="header-actions">
+            <el-input v-model="historySearch" clearable size="small" placeholder="筛选任务名称" style="width:200px" />
+            <el-button size="small" @click="selectHistoryPage">全选本页</el-button>
+            <el-button size="small" @click="clearHistorySelection">取消全选</el-button>
+            <el-button size="small" type="danger" plain :disabled="!selectedHistoryIds.length" @click="batchDeleteHistory">批量删除(已选)</el-button>
+            <span class="cell-sub">当前已加载 {{ tasks.length }} 条</span>
+          </div>
         </div>
       </template>
-      <el-table v-loading="loading && !hasLoaded" :data="pagedHistoryTasks" stripe row-key="id">
+      <el-table ref="historyTable" v-loading="loading && !hasLoaded" :data="pagedHistoryTasks" stripe row-key="id" class="history-table" @selection-change="onHistorySelection">
+        <el-table-column type="selection" width="48" />
         <el-table-column prop="id" label="任务ID" width="82" />
         <el-table-column label="归属" width="110">
           <template #default="{ row }"><el-tag size="small">{{ categoryName(taskCategory(row.taskType)) }}</el-tag></template>
@@ -470,6 +477,9 @@ const filterCategory = ref('all')
 const historyStatusFilter = ref('all')
 const historyPage = ref(1)
 const historyPageSize = ref(50)
+const historySearch = ref('')
+const historyTable = ref()
+const selectedHistoryIds = ref<number[]>([])
 const hasLoaded = ref(false)
 let timer: number | undefined
 let loadPromise: Promise<void> | null = null
@@ -558,10 +568,15 @@ const creatableCategories = computed(() => {
   return Array.from(set).sort()
 })
 
+const preferredCreateTaskType = 'customer_group_engagement'
 const creatableDefinitions = computed(() =>
   taskCenterCreateDefinitions.value
     .filter((x) => x.category === createDialog.value.form.category)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'zh-Hans-CN')),
+    .sort((a, b) => {
+      if (a.taskType === preferredCreateTaskType) return -1
+      if (b.taskType === preferredCreateTaskType) return 1
+      return (a.order ?? 0) - (b.order ?? 0) || a.displayName.localeCompare(b.displayName, 'zh-Hans-CN')
+    }),
 )
 
 const currentCreateDefinition = computed(() => definitions.value.find((x) => x.taskType === createDialog.value.form.taskType))
@@ -586,6 +601,7 @@ const historyTasks = computed(() =>
   categoryFilteredTasks.value
     .filter((x) => isHistoryStatus(displayStatus(x)))
     .filter((x) => historyStatusFilter.value === 'all' || displayStatus(x) === historyStatusFilter.value)
+    .filter((x) => !historySearch.value.trim() || batchTaskName(x).includes(historySearch.value.trim()) || taskName(x.taskType).includes(historySearch.value.trim()))
     .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime()),
 )
 
@@ -594,7 +610,7 @@ const pagedHistoryTasks = computed(() => {
   return historyTasks.value.slice(start, start + historyPageSize.value)
 })
 
-watch([filterCategory, historyStatusFilter, taskLoadCount], () => {
+watch([filterCategory, historyStatusFilter, taskLoadCount, historySearch], () => {
   historyPage.value = 1
 })
 
@@ -724,7 +740,7 @@ async function load(options: { silent?: boolean } = {}) {
 }
 
 function openCreateDialog() {
-  const firstCategory = creatableCategories.value[0] || 'user'
+  const firstCategory = creatableCategories.value.includes('user') ? 'user' : (creatableCategories.value[0] || 'user')
   createDialog.value.sourceTaskId = 0
   createDraft.value = emptyDraft()
   createDialog.value.sourceTaskId = 0
@@ -1020,6 +1036,17 @@ async function submitEditTask() {
 }
 
 
+function onHistorySelection(rows: BatchTask[]) { selectedHistoryIds.value = rows.map((x) => x.id) }
+function selectHistoryPage() { pagedHistoryTasks.value.forEach((row) => historyTable.value?.toggleRowSelection(row, true)) }
+function clearHistorySelection() { historyTable.value?.clearSelection() }
+async function batchDeleteHistory() {
+  if (!selectedHistoryIds.value.length) return
+  await ElMessageBox.confirm(`删除已选 ${selectedHistoryIds.value.length} 条历史任务？`, '批量删除', { type: 'warning' })
+  for (const id of selectedHistoryIds.value) await panelApi.deleteTask(id)
+  selectedHistoryIds.value = []
+  historyTable.value?.clearSelection()
+  await load()
+}
 async function deleteTask(task: BatchTask) {
   const isActive = isActiveStatus(displayStatus(task))
   const message = isActive
@@ -1908,6 +1935,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.history-table :deep(.el-table-fixed-column--right),.history-table :deep(.el-table__fixed-right-patch){background:var(--tp-panel)!important;z-index:6!important}
+.history-table :deep(.el-table__body tr:hover>.el-table-fixed-column--right){background:var(--tp-table-row-hover-bg)!important}
+.history-table :deep(.el-table__inner-wrapper::after){content:'';position:absolute;z-index:5;top:0;right:0;bottom:12px;width:240px;pointer-events:none;background:var(--tp-panel)}
+
 .task-toolbar {
   min-height: 36px;
 }

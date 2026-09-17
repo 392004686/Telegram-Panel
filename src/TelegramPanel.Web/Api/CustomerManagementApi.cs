@@ -28,15 +28,17 @@ public static class CustomerManagementApi
         api.MapGet("/customer-lookup-batches", LookupBatchesAsync);
         api.MapGet("/customer-lookup-batches/{id:int}", LookupBatchAsync);
         api.MapDelete("/customer-lookup-batches/{id:int}", DeleteLookupBatchAsync);
+        api.MapPost("/customer-lookup-batches/batch-delete", BatchDeleteLookupBatchesAsync);
         api.MapPost("/customer-lookup-batches/{id:int}/retry", RetryLookupBatchAsync);
     }
 
-    private static async Task<IResult> ListAsync(int page, int pageSize, string? search, string? status, int? groupId, int? batchId, AppDbContext db)
+    private static async Task<IResult> ListAsync(int page, int pageSize, string? search, string? status, string? interaction, int? groupId, int? batchId, AppDbContext db)
     {
         page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
         var query = db.Customers.AsNoTracking().Include(x => x.GroupAssignments).ThenInclude(x => x.CustomerGroup).Include(x => x.BatchItems).AsQueryable();
         if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => (x.Phone != null && x.Phone.Contains(search)) || (x.Username != null && x.Username.Contains(search)) || (x.DisplayName != null && x.DisplayName.Contains(search)) || (x.TelegramUserId != null && x.TelegramUserId.ToString()!.Contains(search)));
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.LookupStatus == status);
+        if (!string.IsNullOrWhiteSpace(interaction)) query = query.Where(x => x.InteractionStatus == interaction);
         if (groupId.HasValue) query = query.Where(x => x.GroupAssignments.Any(g => g.CustomerGroupId == groupId));
         if (batchId.HasValue) query = query.Where(x => x.BatchItems.Any(b => b.CustomerImportBatchId == batchId));
         var total = await query.CountAsync();
@@ -170,12 +172,38 @@ public static class CustomerManagementApi
         return Results.Ok(new { batchId = batch.Id, taskId = task.Id });
     }
 
-    private static async Task<IResult> LookupBatchesAsync(int page, int pageSize, string? status, AppDbContext db, CancellationToken ct)
+    private static async Task<IResult> LookupBatchesAsync(int page, int pageSize, string? status, string? search, AppDbContext db, CancellationToken ct)
     {
         page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 100);
-        var q = db.CustomerLookupBatches.AsNoTracking(); if (!string.IsNullOrWhiteSpace(status)) q = q.Where(x => x.Status == status);
-        var total = await q.CountAsync(ct); var items = await q.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var q = db.CustomerLookupBatches.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(status)) q = q.Where(x => x.Status == status);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var keyword = search.Trim();
+            q = q.Where(x => x.Name.Contains(keyword) || x.Items.Any(i => i.RawTarget.Contains(keyword) || i.NormalizedTarget.Contains(keyword)));
+        }
+        var total = await q.CountAsync(ct);
+        var batches = await q.AsNoTracking().OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var ids = batches.Select(x => x.Id).ToList();
+        var previews = await db.CustomerLookupItems.AsNoTracking().Where(x => ids.Contains(x.CustomerLookupBatchId)).OrderBy(x => x.Sequence).Select(x => new { x.CustomerLookupBatchId, x.RawTarget }).ToListAsync(ct);
+        var grouped = previews.GroupBy(x => x.CustomerLookupBatchId).ToDictionary(g => g.Key, g => string.Join(" ", g.Select(x => x.RawTarget).Take(12)));
+        var items = batches.Select(x => new {
+            x.Id, x.BatchTaskId, x.Name, x.Mode, x.AccountSource, x.Status, x.Total, x.Completed, x.Found, x.NotFound, x.Failed,
+            QueryPreview = grouped.GetValueOrDefault(x.Id),
+            x.CreatedAt, x.StartedAt, x.CompletedAt, x.LastHeartbeatAt
+        });
         return Results.Ok(new { items, total, page, pageSize });
+    }
+
+    private static async Task<IResult> BatchDeleteLookupBatchesAsync(CustomerLookupBatchDeleteRequest request, AppDbContext db, CancellationToken ct)
+    {
+        var ids = (request.Ids ?? []).Distinct().ToArray();
+        if (ids.Length == 0) return Results.BadRequest(new { message = "请选择批次" });
+        var batches = await db.CustomerLookupBatches.Where(x => ids.Contains(x.Id)).ToListAsync(ct);
+        if (batches.Any(x => x.Status is "pending" or "running")) return Results.Conflict(new { message = "运行中的批次不能删除" });
+        db.CustomerLookupBatches.RemoveRange(batches);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { success = true, affected = batches.Count });
     }
 
     private static async Task<IResult> LookupBatchAsync(int id, AppDbContext db, CancellationToken ct)
@@ -227,6 +255,17 @@ public static class CustomerManagementApi
                 if (group != null) db.CustomerGroupAssignments.Add(new CustomerGroupAssignment { CustomerId = customer.Id, CustomerGroupId = group.Id });
             }
         }
+        else if (request.Action == "set_interaction")
+        {
+            var status = (request.InteractionStatus ?? "").Trim();
+            if (status is not ("contacted" or "uncontacted")) return Results.BadRequest(new { message = "执行状态只支持未执行或已沟通" });
+            foreach (var customer in customers)
+            {
+                customer.InteractionStatus = status;
+                customer.UpdatedAt = DateTime.UtcNow;
+                if (status == "contacted") customer.LastInteractionAt ??= DateTime.UtcNow;
+            }
+        }
         else return Results.BadRequest(new { message = "不支持的批量操作" });
         await db.SaveChangesAsync(cancellationToken);
         return Results.Ok(new { success = true, affected = customers.Count });
@@ -241,8 +280,9 @@ public static class CustomerManagementApi
     public sealed record CreateCustomerGroupRequest(string Name, string? Description);
     public sealed record CustomerLookupRequest(int AccountId);
     public sealed record CustomerDirectLookupRequest(int AccountId, string Query);
-    public sealed record CustomerBatchRequest(List<int> Ids, string Action, int? GroupId);
+    public sealed record CustomerBatchRequest(List<int> Ids, string Action, int? GroupId, string? InteractionStatus);
     public sealed record CustomerLookupBatchCreateRequest(string? Name, string Mode, List<string> Targets, List<int>? AccountIds, int? AccountCategoryId, string TargetOrder, int MinDelaySeconds, int MaxDelaySeconds);
+    public sealed record CustomerLookupBatchDeleteRequest(List<int> Ids);
     public sealed record NamedDto(int Id, string Name);
     public sealed record CustomerGroupDto(int Id, string Name, string? Description, int CustomerCount);
     public sealed record CustomerBatchDto(int Id, string Name, int Total, int Imported, int Duplicates, int Invalid, DateTime CreatedAt);
