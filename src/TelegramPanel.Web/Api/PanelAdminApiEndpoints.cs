@@ -17,6 +17,7 @@ using TelegramPanel.Core.Services;
 using TelegramPanel.Core.Services.Proxy;
 using TelegramPanel.Core.Services.Telegram;
 using TelegramPanel.Core.Utils;
+using TelegramPanel.Data;
 using TelegramPanel.Data.Entities;
 using TelegramPanel.Modules;
 using TelegramPanel.Web.Modules;
