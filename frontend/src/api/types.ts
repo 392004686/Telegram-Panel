@@ -1109,7 +1109,7 @@ export interface BotChannelDetail {
   channel: BotChannelListItem
   remoteInfo?: BotChannelRemoteInfo | null
 }
-export interface CustomerGroupOption { id: number; name: string; description?: string | null; customerCount?: number }
+export interface CustomerGroupOption { id: number; name: string; description?: string | null; customerCount?: number; pendingCustomerCount?: number }
 export interface CustomerImportBatch { id: number; name: string; total: number; imported: number; duplicates: number; invalid: number; createdAt: string }
 export interface CustomerItem {
   id: number; phone?: string | null; username?: string | null; telegramUserId?: number | null; displayName?: string | null
