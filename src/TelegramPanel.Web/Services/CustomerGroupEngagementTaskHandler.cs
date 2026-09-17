@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TelegramPanel.Core.BatchTasks;
@@ -452,18 +453,55 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
     public sealed class Config
     {
+        [JsonPropertyName("account_ids")]
         public List<int> AccountIds { get; set; } = [];
+
+        [JsonPropertyName("account_category_id")]
         public int? AccountCategoryId { get; set; }
+
+        [JsonPropertyName("account_category_name")]
+        public string? AccountCategoryName { get; set; }
+
+        [JsonPropertyName("customer_group_ids")]
         public List<int> CustomerGroupIds { get; set; } = [];
+
+        [JsonPropertyName("customer_group_names")]
+        public List<string> CustomerGroupNames { get; set; } = [];
+
+        [JsonPropertyName("customers_per_group")]
         public int CustomersPerGroup { get; set; } = 10;
+
+        [JsonPropertyName("assignment_mode")]
         public string AssignmentMode { get; set; } = "queue";
+
+        [JsonPropertyName("worker_count")]
         public int WorkerCount { get; set; } = 1;
+
+        [JsonPropertyName("group_title_template")]
         public string? GroupTitleTemplate { get; set; }
+
+        [JsonPropertyName("group_about_template")]
         public string? GroupAboutTemplate { get; set; }
+
+        [JsonPropertyName("text_dictionary_name")]
+        public string? TextDictionaryName { get; set; }
+
+        [JsonPropertyName("image_dictionary_name")]
+        public string? ImageDictionaryName { get; set; }
+
+        [JsonPropertyName("activity_messages")]
         public List<string> ActivityMessages { get; set; } = [];
+
+        [JsonPropertyName("min_delay_seconds")]
         public int MinDelaySeconds { get; set; } = 3;
+
+        [JsonPropertyName("max_delay_seconds")]
         public int MaxDelaySeconds { get; set; } = 8;
+
+        [JsonPropertyName("min_successful_invites")]
         public int MinSuccessfulInvites { get; set; } = 1;
+
+        [JsonPropertyName("completed_customer_ids")]
         public HashSet<int> CompletedCustomerIds { get; set; } = [];
     }
 }

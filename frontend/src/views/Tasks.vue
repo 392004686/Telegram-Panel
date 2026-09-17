@@ -1290,6 +1290,7 @@ function stripRuntimeFields(taskType: string, config: string) {
   if (taskType === 'fragment_username_monitor') {
     for (const key of ['StartedAtUtc', 'AssignedUsernames', 'LastCheckTime', 'Error', 'Canceled']) delete obj[key]
   }
+  if (taskType === 'customer_group_engagement') delete obj.completed_customer_ids
   return JSON.stringify(obj, null, 2)
 }
 
@@ -1302,6 +1303,7 @@ function buildReadableConfigDetails(taskType: string, config: string) {
   if (taskType === 'account_auto_sync') return buildAccountSyncDetails(obj)
   if (taskType === 'auto_change_login_email') return buildAutoLoginEmailDetails(obj)
   if (taskType === 'fragment_username_monitor') return buildFragmentUsernameDetails(obj)
+  if (taskType === 'customer_group_engagement') return buildGroupEngagementDetails(obj)
 
 
   if (taskType === 'user_join_subscribe') return buildUserJoinSubscribeDetails(obj)
@@ -1344,6 +1346,64 @@ function readConfigNumber(obj: Record<string, any>, fallback: number, ...keys: s
     if (Number.isFinite(value)) return value
   }
   return fallback
+}
+
+function buildGroupEngagementDetails(obj: Record<string, any>) {
+  const lines = [
+    `执行账号分类: ${buildNamedIdSummary(obj.account_category_id, obj.account_category_name)}`,
+    `指定执行账号: ${formatIdListValue(obj.account_ids)}`,
+    `客户分类: ${buildNamedIdListSummary(obj.customer_group_ids, obj.customer_group_names)}`,
+    `每群邀请数: ${formatNumberValue(obj.customers_per_group, 10)}`,
+    `最少成功邀请: ${formatNumberValue(obj.min_successful_invites, 1)}`,
+    `分配模式: ${normalizeTaskModeDisplay(obj.assignment_mode)}`,
+    `并发账号数: ${formatNumberValue(obj.worker_count, 1)}`,
+    `群名称模板: ${formatTextValue(obj.group_title_template)}`,
+    `群简介模板: ${formatTextValue(obj.group_about_template)}`,
+    `文字字典: ${formatTextValue(obj.text_dictionary_name)}`,
+    `图片字典: ${formatTextValue(obj.image_dictionary_name)}`,
+    `活跃消息: ${formatActivityMessages(obj.activity_messages)}`,
+    `间隔: ${formatSecondsValue(obj.min_delay_seconds)} ~ ${formatSecondsValue(obj.max_delay_seconds)} 秒`,
+  ]
+
+  const done = Array.isArray(obj.completed_customer_ids) ? obj.completed_customer_ids.length : 0
+  if (done > 0) lines.push(`已标记已沟通: ${done} 人`)
+  return lines
+}
+
+function formatActivityMessages(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) return '-'
+  const items = value.map((x) => String(x ?? '').trim()).filter(Boolean)
+  if (items.length === 0) return '-'
+  const preview = items.slice(0, 3).join(' / ')
+  return items.length > 3 ? `${preview} 等 ${items.length} 条` : preview
+}
+
+function formatIdListValue(value: unknown) {
+  if (!Array.isArray(value)) return '-'
+  const ids = value.map((x: any) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+  if (ids.length === 0) return '-'
+  const preview = ids.slice(0, 8).map((x) => `#${x}`).join(', ')
+  return ids.length > 8 ? `${preview} 等 ${ids.length} 个` : preview
+}
+
+function buildNamedIdSummary(idValue: unknown, nameValue: unknown) {
+  const id = Number(idValue || 0)
+  const name = String(nameValue || '').trim()
+  if (id > 0 && name) return `${name} (#${id})`
+  if (id > 0) return `#${id}`
+  return name || '-'
+}
+
+function buildNamedIdListSummary(idsValue: unknown, namesValue: unknown) {
+  const ids = Array.isArray(idsValue) ? idsValue.map((x: any) => Number(x)).filter((x) => Number.isFinite(x) && x > 0) : []
+  const names = Array.isArray(namesValue) ? namesValue.map((x: any) => String(x || '').trim()) : []
+  const count = Math.max(ids.length, names.length)
+  if (count === 0) return '-'
+
+  const parts: string[] = []
+  for (let i = 0; i < count; i += 1) parts.push(buildNamedIdSummary(ids[i], names[i]))
+  const kept = parts.filter((x) => x !== '-')
+  return kept.length === 0 ? '-' : kept.join(', ')
 }
 
 function buildPrivateCreateDetails(obj: Record<string, any>) {

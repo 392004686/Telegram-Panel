@@ -1229,7 +1229,13 @@ function buildGroupEngagementDraft(): TaskConfigDraft {
   if (!ids.length && !f.accountCategoryId) throw new Error('请选择执行账号或账号分类')
   if (f.maxDelaySeconds < f.minDelaySeconds) throw new Error('最大间隔不能小于最小间隔')
   if (!f.customerGroupIds.length) throw new Error('请选择至少一个客户分类')
-  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, customer_group_ids: f.customerGroupIds, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, text_dictionary_name: f.textDictionaryName || null, image_dictionary_name: f.imageDictionaryName || null, activity_messages: uniqueLines(f.activityMessagesText || 'Hello'), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
+  const accountCategoryName = f.accountCategoryId
+    ? (accountCategories.value.find((x) => x.id === f.accountCategoryId)?.name ?? null)
+    : null
+  const customerGroupNames = f.customerGroupIds
+    .map((id) => customerGroups.value.find((x) => x.id === id)?.name ?? '')
+    .filter(Boolean)
+  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, text_dictionary_name: f.textDictionaryName || null, image_dictionary_name: f.imageDictionaryName || null, activity_messages: uniqueLines(f.activityMessagesText || 'Hello'), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
   return { total: Math.max(1, selectedCustomerCount.value), config: JSON.stringify(config), canSubmit: true, validationError: null }
 }
 
