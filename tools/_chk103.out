@@ -1,0 +1,17 @@
+bel="name" :value="name" />
+                </el-select>
+                <el-select v-model="part.materialDictionaryName" class="full" placeholder="或选素材底图" style="margin-top:8px">
+                  <el-option label="不使用素材" value="" />
+                  <el-option v-for="name in materialDictionaryNames" :key="'m'+name" :label="name" :value="name" />
+                </el-select>
+                <el-button link type="danger" @click="rule.extraImages.splice(pIndex, 1)">删除</el-button>
+              </el-form-item>
+            </div>
+            <div class="form-hint no-offset compact">
+              <el-button size="small" @click="addExtraText(rule)">添加文字</el-button>
+              <el-button size="small" @click="addExtraImage(rule)">添加图片</el-button>
+              每条规则可追加多段文字和多张图片，发送时按顺序发出。
+            </div>
+          </div>
+        </div>
+        <el-form-item label="批量追加"><el-input v-model="forms.groupEngagement.bulkRulesText" type="textarea" :rows="3" placeholder="一行一条文字消息，点击追加后生成多条规则。" 

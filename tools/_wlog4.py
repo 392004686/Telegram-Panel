@@ -1,0 +1,8 @@
+from pathlib import Path
+t=Path('src/TelegramPanel.Web/Api/PanelAdminApiEndpoints.cs').read_text(encoding='utf-8')
+needle='    private static async Task<IResult> GetTaskAsync('
+if needle not in t: raise SystemExit('no gettask')
+block="    private static async Task<IResult> GetTaskLogsAsync(int id, int page, int pageSize, AppDbContext db, CancellationToken ct)\n    {\n        page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);\n        var q = db.BatchTaskLogs.AsNoTracking().Where(x => x.BatchTaskId == id);\n        var total = await q.CountAsync(ct);\n        var items = await q.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new { x.Id, x.Level, x.Message, x.CreatedAt }).ToListAsync(ct);\n        return Results.Ok(new { items, total, page, pageSize });\n    }\n\n    private static async Task<IResult> ExportTaskLogsCsvAsync(int id, AppDbContext db, CancellationToken ct)\n    {\n        var items = await db.BatchTaskLogs.AsNoTracking().Where(x => x.BatchTaskId == id).OrderBy(x => x.Id).ToListAsync(ct);\n        var sb = new System.Text.StringBuilder();\n        sb.AppendLine(\"time,level,message\");\n        foreach (var x in items)\n        {\n            var msg = (x.Message ?? string.Empty).Replace(\"\\\"\", \"\\\"\\\"\");\n            sb.Append(x.CreatedAt.ToString(\"yyyy-MM-dd HH:mm:ss\")).Append(',').Append(x.Level).Append(\",\\\"\").Append(msg).AppendLine(\"\\\"\");\n        }\n        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());\n        return Results.File(bytes, \"text/csv\", $\"task-{id}-logs.csv\");\n    }\n\n"
+t=t.replace(needle, block+needle, 1)
+Path('src/TelegramPanel.Web/Api/PanelAdminApiEndpoints.cs').write_text(t, encoding='utf-8')
+print('api methods ok')
