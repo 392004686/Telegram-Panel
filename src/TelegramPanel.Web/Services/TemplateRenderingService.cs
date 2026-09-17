@@ -169,10 +169,13 @@ public sealed class TemplateRenderingService
         if (!dictionary.IsEnabled)
             throw new InvalidOperationException($"变量已停用：{{{tokenName}}}");
 
-        if (!string.Equals(dictionary.Type, expectedType, StringComparison.OrdinalIgnoreCase))
+        var typeMatches = string.Equals(dictionary.Type, expectedType, StringComparison.OrdinalIgnoreCase)
+            || (string.Equals(expectedType, DataDictionaryTypes.Image, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dictionary.Type, DataDictionaryTypes.Material, StringComparison.OrdinalIgnoreCase));
+        if (!typeMatches)
         {
             var expectedName = string.Equals(expectedType, DataDictionaryTypes.Image, StringComparison.OrdinalIgnoreCase)
-                ? "图片字典"
+                ? "图片/素材字典"
                 : "文本字典";
             throw new InvalidOperationException($"变量类型不匹配：{{{tokenName}}} 需要使用{expectedName}");
         }

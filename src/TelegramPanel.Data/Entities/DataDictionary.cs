@@ -8,6 +8,7 @@ public static class DataDictionaryTypes
     public const string Text = "text";
     public const string Image = "image";
     public const string Video = "video";
+    public const string Material = "material";
 }
 
 /// <summary>

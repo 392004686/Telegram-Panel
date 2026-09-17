@@ -6157,6 +6157,7 @@ public static class PanelAdminApiEndpoints
         var readMode = form["readMode"].ToString();
         var isEnabled = ParseBool(form["isEnabled"]);
         var keepItemIds = ParseIntList(form["keepItemIds"]);
+        var dictionaryType = form["dictionaryType"].ToString();
 
         var uploadScope = id is > 0
             ? $"dictionaries/{id.Value}"
@@ -6189,7 +6190,8 @@ public static class PanelAdminApiEndpoints
                 isEnabled,
                 keepItemIds,
                 newImages,
-                cancellationToken);
+                cancellationToken,
+                dictionaryType);
 
             return Results.Ok(ToDto(saved));
         }

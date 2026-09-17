@@ -119,9 +119,12 @@ public sealed class DataDictionaryService
         bool isEnabled,
         IReadOnlyCollection<int> keepItemIds,
         IReadOnlyList<DataDictionaryImageItemInput> newImages,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? dictionaryType = null)
     {
-        return await SaveMediaDictionaryAsync(id, name, displayName, description, readMode, isEnabled, keepItemIds, newImages, DataDictionaryTypes.Image, "图片", cancellationToken);
+        var type = string.Equals(dictionaryType, DataDictionaryTypes.Material, StringComparison.OrdinalIgnoreCase) ? DataDictionaryTypes.Material : DataDictionaryTypes.Image;
+        var label = type == DataDictionaryTypes.Material ? "素材图片" : "图片";
+        return await SaveMediaDictionaryAsync(id, name, displayName, description, readMode, isEnabled, keepItemIds, newImages, type, label, cancellationToken);
     }
 
     public async Task<DataDictionary> SaveVideoDictionaryAsync(
@@ -282,8 +285,9 @@ public sealed class DataDictionaryService
 
         if (!dictionary.IsEnabled)
             throw new InvalidOperationException($"字典已停用：{dictionary.Name}");
-        if (!string.Equals(dictionary.Type, DataDictionaryTypes.Image, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"字典不是图片类型：{dictionary.Name}");
+        if (!string.Equals(dictionary.Type, DataDictionaryTypes.Image, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(dictionary.Type, DataDictionaryTypes.Material, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"字典不是图片或素材类型：{dictionary.Name}");
 
         var items = dictionary.Items
             .Where(x => x.IsEnabled && !string.IsNullOrWhiteSpace(x.AssetPath))

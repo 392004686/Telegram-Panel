@@ -513,12 +513,20 @@
           <div class="message-rule-card-head"><span>规则 {{ index + 1 }}</span><el-button link type="danger" :disabled="forms.groupEngagement.messageRules.length <= 1" @click="removeGroupEngagementRule(index)">删除</el-button></div>
           <el-form-item label="消息内容"><el-input v-model="rule.text" type="textarea" :rows="4" placeholder="可写多行，支持 {time} 和文字字典变量；留空时可只发图片。" /></el-form-item>
           <el-form-item label="插入文字字典">
-            <div class="dict-insert">
-              <el-select v-model="rule.insertDictionaryName" class="full" clearable placeholder="选择要插入的文字字典">
-                <el-option v-for="name in textDictionaryNames" :key="name" :label="name" :value="name" />
-              </el-select>
-              <el-button @click="insertGroupEngagementDictionary(rule)">插入</el-button>
+            <el-select v-model="rule.insertDictionaryName" class="full" clearable placeholder="选择文字字典后点插入">
+              <el-option v-for="name in textDictionaryNames" :key="name" :label="name" :value="name" />
+            </el-select>
+            <div class="form-hint no-offset compact dict-insert-actions">
+              <el-button @click="insertGroupEngagementDictionary(rule)">插入到消息内容</el-button>
+              下拉宽度与图片字典一致，插入后仍可继续改文字。
             </div>
+          </el-form-item>
+          <el-form-item label="素材图片">
+            <el-select v-model="rule.materialDictionaryName" class="full" placeholder="不使用素材图片">
+              <el-option label="不使用素材图片" value="" />
+              <el-option v-for="name in materialDictionaryNames" :key="name" :label="name" :value="name" />
+            </el-select>
+            <div class="form-hint no-offset compact">在「数据字典」新建/编辑/删除素材图片后，这里直接选用，创建任务时不必再上传。</div>
           </el-form-item>
           <el-form-item label="图片字典">
             <el-select v-model="rule.imageDictionaryName" class="full" placeholder="不发送图片">
@@ -563,6 +571,7 @@ interface UserChatActiveMessageRuleForm {
   id: string
   text: string
   imageDictionaryName: string
+  materialDictionaryName?: string
   insertDictionaryName?: string
 }
 
@@ -620,6 +629,12 @@ const selectedCustomerCount = computed(() => forms.groupEngagement.customerGroup
 const imageDictionaryNames = computed(() =>
   dictionaries.value
     .filter((x) => x.isEnabled && x.type === 'image' && x.enabledItemCount > 0)
+    .map((x) => x.name)
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')),
+)
+const materialDictionaryNames = computed(() =>
+  dictionaries.value
+    .filter((x) => x.isEnabled && x.type === 'material' && x.enabledItemCount > 0)
     .map((x) => x.name)
     .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')),
 )
@@ -840,7 +855,7 @@ function applyInitialConfig() {
     const legacyMessages = readStringArray(cfg.activity_messages)
     const rules = Array.isArray(cfg.message_rules) ? cfg.message_rules : []
     form.messageRules = rules.length
-      ? rules.map((rule: any) => defaultUserChatActiveMessageRule(readString(rule?.text), extractDictionaryName(readString(rule?.image_dictionary_token))))
+      ? rules.map((rule: any) => { const token = extractDictionaryName(readString(rule?.image_dictionary_token)); const r = defaultUserChatActiveMessageRule(readString(rule?.text), token); if (token && materialDictionaryNames.value.includes(token)) { r.materialDictionaryName = token; r.imageDictionaryName = '' } return r })
       : (legacyMessages.length ? legacyMessages.map((text) => defaultUserChatActiveMessageRule(text)) : [defaultUserChatActiveMessageRule('Hello')])
     form.bulkRulesText = ""
     return
@@ -1269,7 +1284,8 @@ function buildGroupEngagementDraft(): TaskConfigDraft {
   const messageRules = normalizeUserChatActiveMessageRules(f.messageRules)
   if (messageRules.length === 0) throw new Error("请至少添加一条活跃消息规则")
   for (const rule of messageRules) {
-    if (rule.imageDictionaryName && !imageDictionaryNames.value.includes(rule.imageDictionaryName)) throw new Error("请选择有效的图片字典")
+    const pic = rule.materialDictionaryName || rule.imageDictionaryName
+    if (pic && !imageDictionaryNames.value.includes(pic) && !materialDictionaryNames.value.includes(pic)) throw new Error("请选择有效的素材图片或图片字典")
   }
   const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: messageRules.map((x) => x.text).filter(Boolean), message_rules: messageRules.map((rule) => ({ text: rule.text, image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null })), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
   return { total: Math.max(1, selectedCustomerCount.value), config: JSON.stringify(config), canSubmit: true, validationError: null }
@@ -1332,6 +1348,7 @@ function defaultUserChatActiveMessageRule(text = '', imageDictionaryName = ''): 
     id: newScopeId(),
     text,
     imageDictionaryName,
+    materialDictionaryName: '',
     insertDictionaryName: '',
   }
 }
@@ -1465,7 +1482,8 @@ function normalizeUserChatActiveMessageRules(rules: UserChatActiveMessageRuleFor
   return rules
     .map((rule) => ({
       text: normalizeMultilineText(rule.text),
-      imageDictionaryName: rule.imageDictionaryName.trim(),
+      imageDictionaryName: (rule.materialDictionaryName || rule.imageDictionaryName || '').trim(),
+      materialDictionaryName: (rule.materialDictionaryName || '').trim(),
     }))
     .filter((rule) => rule.text || rule.imageDictionaryName)
 }
@@ -1901,6 +1919,5 @@ const AvatarFields = defineComponent({
 </style>
 
 <style scoped>
-.dict-insert{display:flex;gap:8px;align-items:center}
-.dict-insert .full{flex:1}
+.dict-insert-actions{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
 </style>
