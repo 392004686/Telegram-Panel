@@ -277,6 +277,8 @@ public static class PanelAdminApiEndpoints
 
         secured.MapGet("/tasks", GetTasksAsync);
         secured.MapGet("/tasks/{id:int}", GetTaskAsync);
+        secured.MapGet("/tasks/{id:int}/logs", GetTaskLogsAsync);
+        secured.MapGet("/tasks/{id:int}/logs.csv", ExportTaskLogsCsvAsync);
         secured.MapPost("/tasks", CreateTaskAsync);
         secured.MapPatch("/tasks/{id:int}", UpdateTaskAsync);
         secured.MapPost("/tasks/assets/avatar", UploadTaskAvatarAssetAsync).DisableAntiforgery();
@@ -5660,6 +5662,29 @@ public static class PanelAdminApiEndpoints
             .ToList();
 
         return Results.Ok(new TaskCenterDto(taskList, scheduled, definitions, timeZone.Current.Id));
+    }
+
+    private static async Task<IResult> GetTaskLogsAsync(int id, int page, int pageSize, AppDbContext db, CancellationToken ct)
+    {
+        page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
+        var q = db.BatchTaskLogs.AsNoTracking().Where(x => x.BatchTaskId == id);
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new { x.Id, x.Level, x.Message, x.CreatedAt }).ToListAsync(ct);
+        return Results.Ok(new { items, total, page, pageSize });
+    }
+
+    private static async Task<IResult> ExportTaskLogsCsvAsync(int id, AppDbContext db, CancellationToken ct)
+    {
+        var items = await db.BatchTaskLogs.AsNoTracking().Where(x => x.BatchTaskId == id).OrderBy(x => x.Id).ToListAsync(ct);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("time,level,message");
+        foreach (var x in items)
+        {
+            var msg = (x.Message ?? string.Empty).Replace("\"", "\"\"");
+            sb.Append(x.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")).Append(',').Append(x.Level).Append(",\"").Append(msg).AppendLine("\"");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        return Results.File(bytes, "text/csv", $"task-{id}-logs.csv");
     }
 
     private static async Task<IResult> GetTaskAsync(

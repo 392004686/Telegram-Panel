@@ -17,6 +17,7 @@
     <!-- 覆盖 Hangfire 的旧版传递依赖，修复 GHSA-5crp-9r3c-p9vr。 -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.*" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.*" />
   </ItemGroup>
 
   <ItemGroup>

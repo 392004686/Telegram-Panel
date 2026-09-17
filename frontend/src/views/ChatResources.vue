@@ -69,7 +69,7 @@
             <div v-if="row.about" class="cell-sub">{{ truncate(row.about, 56) }}</div>
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('username')" label="用户名" min-width="140">
+        <el-table-column v-if="kind !== 'group' && isColumnVisible('username')" label="用户名" min-width="140">
           <template #default="{ row }">
             <el-tag v-if="row.username" size="small">@{{ row.username }}</el-tag>
             <span v-else>-</span>
@@ -620,7 +620,7 @@ const filters = reactive({
 
 const chatResourceColumns: ColumnVisibilityOption[] = [
   { key: 'title', label: `${kindName.value}名称` },
-  { key: 'username', label: '用户名' },
+  ...(props.kind === 'group' ? [] : [{ key: 'username', label: '用户名' }]),
   { key: 'type', label: '类型' },
   { key: 'category', label: '分类' },
   { key: 'memberCount', label: '成员数' },

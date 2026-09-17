@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<GroupCategory> GroupCategories => Set<GroupCategory>();
     public DbSet<BatchTask> BatchTasks => Set<BatchTask>();
+    public DbSet<BatchTaskLog> BatchTaskLogs => Set<BatchTaskLog>();
     public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
     public DbSet<DataDictionary> DataDictionaries => Set<DataDictionary>();
     public DbSet<DataDictionaryItem> DataDictionaryItems => Set<DataDictionaryItem>();
@@ -379,6 +380,14 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => new { e.ExecutionKind, e.Status, e.NextEligibleAtUtc });
+        });
+
+        modelBuilder.Entity<BatchTaskLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Level).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(4000);
+            entity.HasIndex(e => new { e.BatchTaskId, e.CreatedAt });
         });
 
         // ScheduledTask配置

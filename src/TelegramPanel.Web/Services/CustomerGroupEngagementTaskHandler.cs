@@ -31,6 +31,13 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
         config.WorkerCount = Math.Clamp(config.WorkerCount, 1, 10);
 
         var db = host.Services.GetRequiredService<AppDbContext>();
+        async Task WriteTaskLog(string level, string message)
+        {
+            var text = message.Length > 4000 ? message.Substring(0, 4000) : message;
+            db.BatchTaskLogs.Add(new BatchTaskLog { BatchTaskId = host.TaskId, Level = level, Message = text, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        await WriteTaskLog("info", "任务开始执行");
         var taskManagement = host.Services.GetRequiredService<BatchTaskManagementService>();
         var groupService = host.Services.GetRequiredService<IGroupService>();
         var groupManagement = host.Services.GetRequiredService<GroupManagementService>();
@@ -258,8 +265,13 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         return;
                     }
 
+                    saved.MemberCount = Math.Max(saved.MemberCount, 1 + invited.Count);
+                    saved.SyncedAt = DateTime.UtcNow;
+                    await groupManagement.CreateOrUpdateGroupAsync(saved);
                     logger.LogInformation("群组 {TelegramId} 成功邀请 {Count} 人，开始发送活跃消息",
                         info.TelegramId, invited.Count);
+                    db.BatchTaskLogs.Add(new BatchTaskLog { BatchTaskId = host.TaskId, Level = "info", Message = "群 " + info.TelegramId + " 邀请成功 " + invited.Count + " 人，成员数 " + saved.MemberCount, CreatedAt = DateTime.UtcNow });
+                    await db.SaveChangesAsync(ct);
 
                     // 发送活跃消息
                     var resolved = await tools.ResolveChatTargetAsync(accountId, info.TelegramId.ToString(), ct);
@@ -271,27 +283,67 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
                     var templateRendering = host.Services.GetRequiredService<TemplateRenderingService>();
                     var assetStorage = host.Services.GetRequiredService<ImageAssetStorageService>();
+                    var mockup = host.Services.GetRequiredService<MaterialMockupService>();
                     var rules = config.MessageRules.Count > 0
                         ? config.MessageRules
                         : config.ActivityMessages.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => new MessageRule { Text = x }).ToList();
                     if (rules.Count == 0) rules.Add(new MessageRule { Text = "Hello" });
-                    foreach (var rule in rules)
+                    async Task SendRuleAsync(MessageRule item, string logLabel)
                     {
-                        var text = string.IsNullOrWhiteSpace(rule.Text) ? string.Empty : await templateRendering.RenderTextTemplateAsync(rule.Text, ct);
-                        if (!string.IsNullOrWhiteSpace(rule.ImageDictionaryToken))
+                        var text = string.IsNullOrWhiteSpace(item.Text) ? string.Empty : await templateRendering.RenderTextTemplateAsync(item.Text, ct);
+                        var materialToken = item.MaterialDictionaryToken;
+                        var imageToken = item.ImageDictionaryToken;
+                        if (!string.IsNullOrWhiteSpace(materialToken))
                         {
-                            var asset = await templateRendering.ResolveImageTemplateAsync(rule.ImageDictionaryToken, ct);
+                            var asset = await templateRendering.ResolveImageTemplateAsync(materialToken, ct);
+                            await using var baseImage = await assetStorage.OpenReadAsync(asset.AssetPath, ct);
+                            var png = await mockup.ComposeAsync(baseImage, new MaterialMockupRequest
+                            {
+                                DeviceId = string.IsNullOrWhiteSpace(item.MaterialDevice) ? "iphone-16-pro-max" : item.MaterialDevice,
+                                TimeMode = string.IsNullOrWhiteSpace(item.MaterialTimeMode) ? "now" : item.MaterialTimeMode,
+                                Time = item.MaterialTime,
+                                Scale = item.MaterialScale <= 0 ? 1 : item.MaterialScale,
+                                Notification = string.IsNullOrWhiteSpace(item.MaterialNotification) ? "none" : item.MaterialNotification
+                            }, ct);
+                            await using var generated = new MemoryStream(png);
+                            var sent = await tools.SendPhotoToResolvedChatAsync(accountId, resolved.Target, generated, "material.png", text, null, ct);
+                            if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃素材图片发送失败");
+                            await WriteTaskLog("info", logLabel + " 已发送素材图");
+                        }
+                        else if (!string.IsNullOrWhiteSpace(imageToken))
+                        {
+                            var asset = await templateRendering.ResolveImageTemplateAsync(imageToken, ct);
                             await using var image = await assetStorage.OpenReadAsync(asset.AssetPath, ct);
                             var sent = await tools.SendPhotoToResolvedChatAsync(accountId, resolved.Target, image, asset.FileName, text, null, ct);
                             if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃图片发送失败");
+                            await WriteTaskLog("info", logLabel + " 已发送图片字典");
                         }
                         else
                         {
-                            if (string.IsNullOrWhiteSpace(text)) continue;
+                            if (string.IsNullOrWhiteSpace(text)) return;
                             var sent = await tools.SendMessageToResolvedChatAsync(accountId, resolved.Target, text, cancellationToken: ct);
                             if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃消息发送失败");
+                            await WriteTaskLog("info", logLabel + " 已发送文字");
                         }
                         await Delay(config, ct);
+                    }
+                    var ruleIndex = 0;
+                    foreach (var rule in rules)
+                    {
+                        ruleIndex++;
+                        await SendRuleAsync(rule, "规则" + ruleIndex);
+                        var extraTextIndex = 0;
+                        foreach (var extraText in rule.ExtraTexts ?? [])
+                        {
+                            extraTextIndex++;
+                            await SendRuleAsync(new MessageRule { Text = extraText }, "规则" + ruleIndex + " 附加文字" + extraTextIndex);
+                        }
+                        var extraImageIndex = 0;
+                        foreach (var extraImage in rule.ExtraImages ?? [])
+                        {
+                            extraImageIndex++;
+                            await SendRuleAsync(extraImage, "规则" + ruleIndex + " 附加图片" + extraImageIndex);
+                        }
                     }
 
                     // 标记客户为已沟通
@@ -319,6 +371,7 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
                     logger.LogError(ex, "创建群组或邀请过程中发生异常");
+                    await WriteTaskLog("error", "群处理失败: " + ex.Message);
 
                     // 检查是否是账号级别的失败
                     if (IsAccountFailure(ex.Message))
@@ -343,6 +396,7 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
             });
 
         logger.LogInformation("批量建群邀请任务完成，已完成 {Completed}，失败 {Failed}", completed, failed);
+        await WriteTaskLog("info", $"任务结束，完成 {completed}，失败 {failed}");
 
         if (healthyAccounts.IsEmpty)
         {
@@ -528,5 +582,21 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         [JsonPropertyName("image_dictionary_token")]
         public string? ImageDictionaryToken { get; set; }
+        [JsonPropertyName("material_dictionary_token")]
+        public string? MaterialDictionaryToken { get; set; }
+        [JsonPropertyName("material_device")]
+        public string? MaterialDevice { get; set; }
+        [JsonPropertyName("material_time_mode")]
+        public string? MaterialTimeMode { get; set; }
+        [JsonPropertyName("material_time")]
+        public string? MaterialTime { get; set; }
+        [JsonPropertyName("material_scale")]
+        public double MaterialScale { get; set; } = 1;
+        [JsonPropertyName("material_notification")]
+        public string? MaterialNotification { get; set; }
+        [JsonPropertyName("extra_texts")]
+        public List<string> ExtraTexts { get; set; } = [];
+        [JsonPropertyName("extra_images")]
+        public List<MessageRule> ExtraImages { get; set; } = [];
     }
 }

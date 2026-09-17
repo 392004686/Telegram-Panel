@@ -353,8 +353,19 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailDialog.visible" :title="detailDialog.title" width="min(720px, calc(100vw - 24px))">
+    <el-dialog v-model="detailDialog.visible" :title="detailDialog.title" width="min(920px, calc(100vw - 24px))">
       <pre class="detail-pre">{{ detailDialog.content }}</pre>
+      <div class="log-toolbar"><strong>执行日志</strong>
+        <el-button size="small" :disabled="!detailDialog.taskId || detailDialog.logTotal === 0" @click="exportTaskLogs">导出 CSV</el-button>
+      </div>
+      <el-table :data="detailDialog.logs" size="small" max-height="320" empty-text="暂无执行日志">
+        <el-table-column label="时间" width="170"><template #default="{row}">{{ formatTime(row.createdAt) }}</template></el-table-column>
+        <el-table-column prop="level" label="级别" width="80" />
+        <el-table-column prop="message" label="内容" min-width="360" />
+      </el-table>
+      <div class="pager" v-if="detailDialog.logTotal > detailDialog.logPageSize">
+        <el-pagination v-model:current-page="detailDialog.logPage" :page-size="detailDialog.logPageSize" layout="total, prev, pager, next" :total="detailDialog.logTotal" @current-change="loadTaskLogs" />
+      </div>
       <template #footer>
         <el-button type="primary" @click="detailDialog.visible = false">关闭</el-button>
       </template>
@@ -526,6 +537,12 @@ const detailDialog = ref({
   visible: false,
   title: '',
   content: '',
+  taskId: 0,
+  logs: [] as Array<{ id: number; level: string; message: string; createdAt: string }>,
+  logTotal: 0,
+  logPage: 1,
+  logPageSize: 20,
+  canExport: false,
 })
 
 const editTaskDialog = ref({
@@ -1242,7 +1259,42 @@ async function showTaskDetails(task: BatchTask) {
     visible: true,
     title: `任务详情 #${task.id}`,
     content: lines.join('\n'),
+    taskId: task.id,
+    logs: [],
+    logTotal: 0,
+    logPage: 1,
+    logPageSize: 20,
+    canExport: displayStatus(task) === 'completed' || displayStatus(task) === 'failed',
   }
+  await loadTaskLogs()
+}
+
+async function loadTaskLogs() {
+  if (!detailDialog.value.taskId) return
+  const r = await panelApi.taskLogs(detailDialog.value.taskId, { page: detailDialog.value.logPage, pageSize: detailDialog.value.logPageSize })
+  detailDialog.value.logs = r.items
+  detailDialog.value.logTotal = r.total
+}
+
+async function exportTaskLogs() {
+  if (!detailDialog.value.taskId) return
+  const rows = [['time','level','message']]
+  let page = 1
+  const pageSize = 200
+  while (true) {
+    const r = await panelApi.taskLogs(detailDialog.value.taskId, { page, pageSize })
+    for (const item of r.items) rows.push([formatTime(item.createdAt), item.level, String(item.message || '').split('"').join('""')])
+    if (page * pageSize >= r.total) break
+    page += 1
+  }
+  const csv = rows.map((x) => x.map((c) => '"' + c + '"').join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `task-${detailDialog.value.taskId}-logs.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 async function loadTaskDetail(id: number) {
@@ -1883,6 +1935,12 @@ async function showScheduledDetails(task: ScheduledTask) {
     visible: true,
     title: `计划任务详情：${scheduledName(task)}`,
     content: lines.join('\n'),
+    taskId: 0,
+    logs: [],
+    logTotal: 0,
+    logPage: 1,
+    logPageSize: 20,
+    canExport: false,
   }
 }
 
@@ -1935,6 +1993,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.log-toolbar{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px}
 .header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .history-table :deep(.el-table-fixed-column--right),.history-table :deep(.el-table__fixed-right-patch){background:var(--tp-panel)!important;z-index:6!important}
 .history-table :deep(.el-table__body tr:hover>.el-table-fixed-column--right){background:var(--tp-table-row-hover-bg)!important}

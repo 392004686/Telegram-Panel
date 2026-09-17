@@ -395,6 +395,7 @@ export const panelApi = {
   rerunTask: (id: number) => api.post<BatchTask>(`/tasks/${id}/rerun`).then((r) => r.data),
   cancelTask: (id: number) => api.post<OperationResult>(`/tasks/${id}/cancel`).then((r) => r.data),
   deleteTask: (id: number) => api.delete<OperationResult>(`/tasks/${id}`).then((r) => r.data),
+  taskLogs: (id: number, params: { page: number; pageSize: number }) => api.get<{ items: Array<{ id: number; level: string; message: string; createdAt: string }>; total: number; page: number; pageSize: number }>(`/tasks/${id}/logs`, { params }).then((r) => r.data),
   uploadTaskAvatarAsset: (form: FormData) =>
     api.post<TaskAssetUploadResult>('/tasks/assets/avatar', form, { timeout: 120_000 }).then((r) => r.data),
   pauseScheduledTask: (id: number) =>

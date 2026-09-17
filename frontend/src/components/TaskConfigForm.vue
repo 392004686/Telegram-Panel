@@ -521,19 +521,88 @@
               下拉宽度与图片字典一致，插入后仍可继续改文字。
             </div>
           </el-form-item>
-          <el-form-item label="素材图片">
-            <el-select v-model="rule.materialDictionaryName" class="full" placeholder="不使用素材图片">
-              <el-option label="不使用素材图片" value="" />
+          <el-form-item label="素材底图">
+            <el-select v-model="rule.materialDictionaryName" class="full" placeholder="不使用素材底图">
+              <el-option label="不使用素材底图" value="" />
               <el-option v-for="name in materialDictionaryNames" :key="name" :label="name" :value="name" />
             </el-select>
-            <div class="form-hint no-offset compact">在「数据字典」新建/编辑/删除素材图片后，这里直接选用，创建任务时不必再上传。</div>
+            <div class="form-hint no-offset compact">在「数据字典」上传底图（商品页截图）。发送时按下面参数生成手机截屏图，不必在创建任务时再传图。</div>
           </el-form-item>
+          <template v-if="rule.materialDictionaryName">
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="手机型号">
+                  <el-select v-model="rule.materialDevice" class="full">
+                    <el-option v-for="item in materialDevices" :key="item.id" :label="item.label" :value="item.id" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="生成时间">
+                  <el-radio-group v-model="rule.materialTimeMode">
+                    <el-radio-button value="now">发送时当前时间</el-radio-button>
+                    <el-radio-button value="fixed">固定时间</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="12">
+              <el-col :span="8">
+                <el-form-item v-if="rule.materialTimeMode === 'fixed'" label="固定时刻">
+                  <el-input v-model="rule.materialTime" placeholder="15:59" class="full" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="倍率">
+                  <el-select v-model="rule.materialScale" class="full">
+                    <el-option :value="0.5" label="0.5x" />
+                    <el-option :value="1" label="1x" />
+                    <el-option :value="1.5" label="1.5x" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="Android 通知">
+                  <el-select v-model="rule.materialNotification" class="full" :disabled="!isAndroidMaterialDevice(rule.materialDevice)">
+                    <el-option value="none" label="无" />
+                    <el-option value="telegram" label="Telegram 小飞机" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
           <el-form-item label="图片字典">
             <el-select v-model="rule.imageDictionaryName" class="full" placeholder="不发送图片">
               <el-option label="不发送图片" value="" />
               <el-option v-for="name in imageDictionaryNames" :key="name" :label="name" :value="name" />
             </el-select>
           </el-form-item>
+          <div class="extra-parts">
+            <div v-for="(part, pIndex) in (rule.extraTexts || [])" :key="part.id" class="extra-part">
+              <el-form-item :label="'附加文字 ' + (pIndex + 1)">
+                <el-input v-model="part.text" type="textarea" :rows="3" />
+                <el-button link type="danger" @click="removeExtraText(rule, pIndex)">删除</el-button>
+              </el-form-item>
+            </div>
+            <div v-for="(part, pIndex) in (rule.extraImages || [])" :key="part.id" class="extra-part">
+              <el-form-item :label="'附加图片 ' + (pIndex + 1)">
+                <el-select v-model="part.imageDictionaryName" class="full" placeholder="选择图片字典">
+                  <el-option label="不发送" value="" />
+                  <el-option v-for="name in imageDictionaryNames" :key="name" :label="name" :value="name" />
+                </el-select>
+                <el-select v-model="part.materialDictionaryName" class="full" placeholder="或选素材底图" style="margin-top:8px">
+                  <el-option label="不使用素材" value="" />
+                  <el-option v-for="name in materialDictionaryNames" :key="'m'+name" :label="name" :value="name" />
+                </el-select>
+                <el-button link type="danger" @click="removeExtraImage(rule, pIndex)">删除</el-button>
+              </el-form-item>
+            </div>
+            <div class="form-hint no-offset compact">
+              <el-button size="small" @click="addExtraText(rule)">添加文字</el-button>
+              <el-button size="small" @click="addExtraImage(rule)">添加图片</el-button>
+              每条规则可追加多段文字和多张图片，发送时按顺序发出。
+            </div>
+          </div>
         </div>
         <el-form-item label="批量追加"><el-input v-model="forms.groupEngagement.bulkRulesText" type="textarea" :rows="3" placeholder="一行一条文字消息，点击追加后生成多条规则。" /></el-form-item>
         <div class="form-hint"><el-button size="small" @click="appendGroupEngagementLineRules">按行追加为规则</el-button> 可用文本变量：{{ textVariableHint }}</div>
@@ -572,7 +641,14 @@ interface UserChatActiveMessageRuleForm {
   text: string
   imageDictionaryName: string
   materialDictionaryName?: string
+  materialDevice?: string
+  materialTimeMode?: string
+  materialTime?: string
+  materialScale?: number
+  materialNotification?: string
   insertDictionaryName?: string
+  extraTexts?: Array<{ id: string; text: string }>
+  extraImages?: Array<{ id: string; imageDictionaryName: string; materialDictionaryName: string }>
 }
 
 const props = defineProps<{
@@ -638,6 +714,21 @@ const materialDictionaryNames = computed(() =>
     .map((x) => x.name)
     .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')),
 )
+const materialDevices = [
+  { id: 'iphone-16-pro-max', label: 'iPhone 16 Pro Max' },
+  { id: 'iphone-16-pro', label: 'iPhone 16 Pro' },
+  { id: 'iphone-16-plus', label: 'iPhone 16 Plus' },
+  { id: 'iphone-16', label: 'iPhone 16' },
+  { id: 'iphone-15-pro-max', label: 'iPhone 15 Pro Max' },
+  { id: 'iphone-14-pro-max', label: 'iPhone 14 Pro Max' },
+  { id: 'pixel-7-pro', label: 'Pixel 7 Pro' },
+  { id: 'pixel-8-pro', label: 'Pixel 8 Pro' },
+  { id: 'galaxy-s24', label: 'Galaxy S24' },
+  { id: 'galaxy-a55', label: 'Galaxy A55' },
+]
+function isAndroidMaterialDevice(id?: string) {
+  return (id || '').startsWith('pixel-') || (id || '').startsWith('galaxy-')
+}
 
 const textVariableHint = computed(() => {
   const names = ['{time}', ...textDictionaryNames.value.map((x) => `{${x}}`)]
@@ -855,7 +946,7 @@ function applyInitialConfig() {
     const legacyMessages = readStringArray(cfg.activity_messages)
     const rules = Array.isArray(cfg.message_rules) ? cfg.message_rules : []
     form.messageRules = rules.length
-      ? rules.map((rule: any) => { const token = extractDictionaryName(readString(rule?.image_dictionary_token)); const r = defaultUserChatActiveMessageRule(readString(rule?.text), token); if (token && materialDictionaryNames.value.includes(token)) { r.materialDictionaryName = token; r.imageDictionaryName = '' } return r })
+      ? rules.map((rule: any) => { const materialToken = extractDictionaryName(readString(rule?.material_dictionary_token)); const imageToken = extractDictionaryName(readString(rule?.image_dictionary_token)); const r = defaultUserChatActiveMessageRule(readString(rule?.text), imageToken); if (materialToken) { r.materialDictionaryName = materialToken; r.imageDictionaryName = '' } r.materialDevice = readString(rule?.material_device) || 'iphone-16-pro-max'; r.materialTimeMode = readString(rule?.material_time_mode) || 'now'; r.materialTime = readString(rule?.material_time) || '15:59'; r.materialScale = Number(rule?.material_scale || 1); r.materialNotification = readString(rule?.material_notification) || 'none'; r.extraTexts = Array.isArray(rule?.extra_texts) ? rule.extra_texts.filter((x: unknown) => String(x || '').trim()).map((text: string) => ({ id: newScopeId(), text: String(text) })) : []; r.extraImages = Array.isArray(rule?.extra_images) ? rule.extra_images.map((x: any) => ({ id: newScopeId(), imageDictionaryName: extractDictionaryName(readString(x?.image_dictionary_token)), materialDictionaryName: extractDictionaryName(readString(x?.material_dictionary_token)) })) : []; return r })
       : (legacyMessages.length ? legacyMessages.map((text) => defaultUserChatActiveMessageRule(text)) : [defaultUserChatActiveMessageRule('Hello')])
     form.bulkRulesText = ""
     return
@@ -1287,7 +1378,7 @@ function buildGroupEngagementDraft(): TaskConfigDraft {
     const pic = rule.materialDictionaryName || rule.imageDictionaryName
     if (pic && !imageDictionaryNames.value.includes(pic) && !materialDictionaryNames.value.includes(pic)) throw new Error("请选择有效的素材图片或图片字典")
   }
-  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: messageRules.map((x) => x.text).filter(Boolean), message_rules: messageRules.map((rule) => ({ text: rule.text, image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null })), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
+  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: messageRules.map((x) => x.text).filter(Boolean), message_rules: f.messageRules.map((rule) => ({ text: rule.text, image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null, material_dictionary_token: rule.materialDictionaryName ? dictionaryToken(rule.materialDictionaryName) : null, material_device: rule.materialDevice || 'iphone-16-pro-max', material_time_mode: rule.materialTimeMode || 'now', material_time: rule.materialTime || '15:59', material_scale: Number(rule.materialScale || 1), material_notification: rule.materialNotification || 'none', extra_texts: (rule.extraTexts || []).map((x) => x.text).filter(Boolean), extra_images: (rule.extraImages || []).map((x) => ({ image_dictionary_token: x.imageDictionaryName ? dictionaryToken(x.imageDictionaryName) : null, material_dictionary_token: x.materialDictionaryName ? dictionaryToken(x.materialDictionaryName) : null, material_device: rule.materialDevice || 'iphone-16-pro-max', material_time_mode: rule.materialTimeMode || 'now', material_time: rule.materialTime || '15:59', material_scale: Number(rule.materialScale || 1), material_notification: rule.materialNotification || 'none' })) })), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
   return { total: Math.max(1, selectedCustomerCount.value), config: JSON.stringify(config), canSubmit: true, validationError: null }
 }
 
@@ -1301,6 +1392,20 @@ function appendGroupEngagementLineRules() {
   if (rules.length === 1 && !rules[0].text.trim() && !rules[0].imageDictionaryName.trim()) rules.splice(0, 1)
   for (const line of lines) rules.push(defaultUserChatActiveMessageRule(line))
   forms.groupEngagement.bulkRulesText = ""
+}
+function addExtraText(rule: UserChatActiveMessageRuleForm) {
+  if (!rule.extraTexts) rule.extraTexts = []
+  rule.extraTexts.push({ id: newScopeId(), text: '' })
+}
+function addExtraImage(rule: UserChatActiveMessageRuleForm) {
+  if (!rule.extraImages) rule.extraImages = []
+  rule.extraImages.push({ id: newScopeId(), imageDictionaryName: '', materialDictionaryName: '' })
+}
+function removeExtraText(rule: UserChatActiveMessageRuleForm, index: number) {
+  rule.extraTexts?.splice(index, 1)
+}
+function removeExtraImage(rule: UserChatActiveMessageRuleForm, index: number) {
+  rule.extraImages?.splice(index, 1)
 }
 function insertGroupEngagementDictionary(rule: UserChatActiveMessageRuleForm & { insertDictionaryName?: string }) {
   const name = (rule.insertDictionaryName || "").trim()
@@ -1349,7 +1454,14 @@ function defaultUserChatActiveMessageRule(text = '', imageDictionaryName = ''): 
     text,
     imageDictionaryName,
     materialDictionaryName: '',
+    materialDevice: 'iphone-16-pro-max',
+    materialTimeMode: 'now',
+    materialTime: '15:59',
+    materialScale: 1,
+    materialNotification: 'none',
     insertDictionaryName: '',
+    extraTexts: [],
+    extraImages: [],
   }
 }
 
@@ -1832,6 +1944,7 @@ const AvatarFields = defineComponent({
   margin-bottom: 10px;
 }
 
+.extra-parts{margin-top:8px}.extra-part{margin-bottom:8px}
 .message-rule-card {
   padding: 12px 12px 2px;
   margin-bottom: 10px;
