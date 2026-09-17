@@ -758,6 +758,7 @@ export interface TaskDefinition {
   canEdit: boolean
   canRerun: boolean
   autoPauseBeforeEdit: boolean
+  order?: number
 }
 
 export interface TaskCenter {

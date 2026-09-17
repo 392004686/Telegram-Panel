@@ -33,7 +33,7 @@
         </div>
       </template>
       <el-table ref="historyTable" :data="history" row-key="id" class="fixed-table" @selection-change="onHistorySelection">
-        <el-table-column type="selection" width="48" reserve-selection :selectable="row => !active(row)"/>
+        <el-table-column type="selection" width="48" reserve-selection :selectable="(row: CustomerLookupBatch) => !active(row)"/>
         <el-table-column prop="name" label="名称" min-width="160"/>
         <el-table-column label="查询内容" min-width="240"><template #default="{row}"><span class="query-preview" :title="row.queryPreview || ''">{{row.queryPreview || '-'}}</span></template></el-table-column>
         <el-table-column label="状态" width="100"><template #default="{row}">{{statusLabel(row.status)}}</template></el-table-column>
