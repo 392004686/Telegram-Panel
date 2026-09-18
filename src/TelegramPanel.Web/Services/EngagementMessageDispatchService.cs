@@ -31,7 +31,7 @@ public sealed class EngagementMessageDispatchService
 
     public async Task<EngagementRuleSendResult> SendRuleAsync(
         int accountId,
-        ResolvedChatTarget target,
+        AccountTelegramToolsService.ResolvedChatTarget target,
         CustomerGroupEngagementTaskHandler.MessageRule rule,
         string logLabel,
         Func<string, Task>? writeLog,
