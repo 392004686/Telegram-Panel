@@ -624,12 +624,27 @@ public class GroupService : IGroupService
                 return new InviteResult(username, false, "目标是当前执行账号自己", IsSelf: true, UserId: targetUser.id, DisplayName: display);
             var inputUser = new InputUser(targetUser.id, targetUser.access_hash);
 
+            Messages_InvitedUsers invitedUsers;
             if (chat is Channel megaGroup)
-                await client.Channels_InviteToChannel(megaGroup, inputUser);
+                invitedUsers = await client.Channels_InviteToChannel(megaGroup, inputUser);
             else if (chat is Chat basicGroup)
-                await client.Messages_AddChatUser(basicGroup.id, inputUser, fwd_limit: 0);
+                invitedUsers = await client.Messages_AddChatUser(basicGroup.id, inputUser, fwd_limit: 0);
             else
                 throw new InvalidOperationException("群组类型无效");
+
+            var missing = invitedUsers.missing_invitees?
+                .FirstOrDefault(x => x.user_id == targetUser.id);
+            if (missing != null)
+            {
+                var reason = TranslateMissingInvitee(missing);
+                _logger.LogWarning(
+                    "Telegram accepted invite RPC but did not add user {UserId} to group {GroupId}: {Reason} (flags={Flags})",
+                    targetUser.id,
+                    groupId,
+                    reason,
+                    missing.flags);
+                return new InviteResult(username, false, reason, UserId: targetUser.id, DisplayName: display);
+            }
 
             _logger.LogInformation("Successfully invited @{Username} to group {GroupId}", username, groupId);
             return new InviteResult(username, true, UserId: targetUser.id, DisplayName: display);
@@ -651,6 +666,17 @@ public class GroupService : IGroupService
             _logger.LogError(ex, "Unexpected error inviting @{Username} to group {GroupId}", username, groupId);
             return new InviteResult(username, false, ex.Message);
         }
+    }
+
+    private static string TranslateMissingInvitee(MissingInvitee missing)
+    {
+        if (missing.flags.HasFlag(MissingInvitee.Flags.premium_would_allow_invite))
+            return "Telegram 未添加该用户：当前执行账号需要 Telegram Premium 才能直接邀请此用户";
+
+        if (missing.flags.HasFlag(MissingInvitee.Flags.premium_required_for_pm))
+            return "Telegram 未添加该用户：目标用户的隐私设置阻止直接邀请，且执行账号需要 Premium 才能私聊发送邀请链接";
+
+        return "Telegram 未添加该用户：目标用户的邀请隐私规则不允许当前执行账号直接添加，可改用邀请链接";
     }
 
     private static async Task<User> ResolveInviteUserAsync(Client client, string value)
