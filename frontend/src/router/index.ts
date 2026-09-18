@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { isUiPreview, useAuthStore } from '@/stores/auth'
 
 const isChunkLoadError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || '')
@@ -57,6 +57,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (isUiPreview) return true
   if (to.meta.public) return true
 
   const auth = useAuthStore()

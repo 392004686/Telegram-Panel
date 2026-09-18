@@ -2,9 +2,21 @@ import { defineStore } from 'pinia'
 import { panelApi } from '@/api/panel'
 import type { AuthMe } from '@/api/types'
 
+export const isUiPreview = import.meta.env.VITE_UI_PREVIEW === 'true'
+
+const previewAuth: AuthMe = {
+  authenticated: true,
+  username: 'ui-preview',
+  mustChangePassword: false,
+  authEnabled: false,
+  role: 'admin',
+  permissions: ['operate'],
+  navigationItems: null,
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    me: null as AuthMe | null,
+    me: isUiPreview ? previewAuth : null as AuthMe | null,
     loading: false,
   }),
   getters: {
@@ -15,6 +27,10 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     async fetchMe() {
+      if (isUiPreview) {
+        this.me = previewAuth
+        return this.me
+      }
       if (this.loading) return this.me
       this.loading = true
       try {
@@ -25,9 +41,11 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async login(username: string, password: string) {
+      if (isUiPreview) return
       this.me = await panelApi.login(username, password)
     },
     async logout() {
+      if (isUiPreview) return
       await panelApi.logout()
       this.me = null
       window.location.href = '/ui/login'
