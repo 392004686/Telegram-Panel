@@ -646,8 +646,40 @@ public class GroupService : IGroupService
                 return new InviteResult(username, false, reason, UserId: targetUser.id, DisplayName: display);
             }
 
-            _logger.LogInformation("Successfully invited @{Username} to group {GroupId}", username, groupId);
-            return new InviteResult(username, true, UserId: targetUser.id, DisplayName: display);
+            var updateEvidence = DescribeInviteUpdateEvidence(invitedUsers.updates, targetUser.id, groupId);
+            if (updateEvidence.Confirmed)
+            {
+                _logger.LogInformation(
+                    "Successfully invited @{Username} to group {GroupId} (update evidence: {Evidence})",
+                    username,
+                    groupId,
+                    updateEvidence.Summary);
+                return new InviteResult(username, true, UserId: targetUser.id, DisplayName: display);
+            }
+
+            // Telegram 偶发“RPC 已接受但成员列表稍后才可见”。先按 updates 诊断，再短重试成员快照。
+            var confirmed = await ConfirmGroupMemberAsync(accountId, groupId, targetUser.id, CancellationToken.None);
+            if (confirmed.Confirmed)
+            {
+                _logger.LogInformation(
+                    "Successfully invited @{Username} to group {GroupId} after membership retry (update evidence: {Evidence}, members={MemberCount})",
+                    username,
+                    groupId,
+                    updateEvidence.Summary,
+                    confirmed.MemberCount);
+                return new InviteResult(username, true, UserId: targetUser.id, DisplayName: display);
+            }
+
+            var deferredError = "Telegram 邀请请求已接受，但短重试后成员快照仍未确认目标用户入群";
+            _logger.LogWarning(
+                "Invite @{Username} to group {GroupId} deferred/unconfirmed. targetUserId={UserId}, updateEvidence={Evidence}, snapshotMembers={MemberCount}, snapshotIds=[{Ids}]",
+                username,
+                groupId,
+                targetUser.id,
+                updateEvidence.Summary,
+                confirmed.MemberCount,
+                string.Join(",", confirmed.MemberUserIds));
+            return new InviteResult(username, false, deferredError, UserId: targetUser.id, DisplayName: display);
         }
         catch (RpcException ex)
         {
@@ -704,6 +736,101 @@ public class GroupService : IGroupService
         return resolved.User;
     }
 
+
+    public async Task<(bool Confirmed, int MemberCount, IReadOnlyList<long> MemberUserIds)> ConfirmGroupMemberAsync(
+        int accountId,
+        long groupId,
+        long userId,
+        CancellationToken cancellationToken = default,
+        int maxAttempts = 4,
+        int delayMs = 1200)
+    {
+        if (userId <= 0)
+            return (false, 0, Array.Empty<long>());
+
+        maxAttempts = Math.Clamp(maxAttempts, 1, 8);
+        delayMs = Math.Clamp(delayMs, 200, 5000);
+
+        (int MemberCount, IReadOnlyList<long> MemberUserIds) snapshot = (0, Array.Empty<long>());
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            snapshot = await GetGroupMembershipSnapshotAsync(accountId, groupId, cancellationToken);
+            if (snapshot.MemberUserIds.Contains(userId))
+            {
+                if (attempt > 1)
+                {
+                    _logger.LogInformation(
+                        "Membership confirmed for user {UserId} in group {GroupId} on attempt {Attempt}/{MaxAttempts}",
+                        userId,
+                        groupId,
+                        attempt,
+                        maxAttempts);
+                }
+                return (true, snapshot.MemberCount, snapshot.MemberUserIds);
+            }
+
+            if (attempt < maxAttempts)
+                await Task.Delay(delayMs, cancellationToken);
+        }
+
+        return (false, snapshot.MemberCount, snapshot.MemberUserIds);
+    }
+
+    private static (bool Confirmed, string Summary) DescribeInviteUpdateEvidence(UpdatesBase? updates, long targetUserId, long groupId)
+    {
+        if (updates == null)
+            return (false, "updates=null");
+
+        var updateTypes = new List<string>();
+        var confirmed = false;
+
+        void InspectUpdate(Update? update)
+        {
+            if (update == null) return;
+            updateTypes.Add(update.GetType().Name);
+            switch (update)
+            {
+                case UpdateChannelParticipant channelParticipant
+                    when channelParticipant.user_id == targetUserId && channelParticipant.new_participant != null:
+                    confirmed = true;
+                    break;
+                case UpdateChatParticipant chatParticipant
+                    when chatParticipant.user_id == targetUserId && chatParticipant.new_participant != null:
+                    confirmed = true;
+                    break;
+                case UpdateChatParticipants chatParticipants:
+                {
+                    var participants = chatParticipants.participants switch
+                    {
+                        ChatParticipants cp => cp.participants,
+                        _ => Array.Empty<ChatParticipantBase>()
+                    };
+                    if (participants.Any(p => GetChatParticipantUserId(p) == targetUserId))
+                        confirmed = true;
+                    break;
+                }
+            }
+        }
+
+        switch (updates)
+        {
+            case Updates u:
+                foreach (var update in u.updates ?? Array.Empty<Update>())
+                    InspectUpdate(update);
+                break;
+            case UpdatesCombined u:
+                foreach (var update in u.updates ?? Array.Empty<Update>())
+                    InspectUpdate(update);
+                break;
+            case UpdateShort u:
+                InspectUpdate(u.update);
+                break;
+        }
+
+        var typeSummary = updateTypes.Count == 0 ? updates.GetType().Name : string.Join(",", updateTypes.Distinct());
+        return (confirmed, $"type={updates.GetType().Name}; updates=[{typeSummary}]; targetConfirmed={confirmed}; groupId={groupId}");
+    }
     public async Task<(int MemberCount, IReadOnlyList<long> MemberUserIds)> GetGroupMembershipSnapshotAsync(int accountId, long groupId, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);

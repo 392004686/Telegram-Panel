@@ -314,14 +314,15 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
                         if (result.Success && !result.AlreadyInGroup && !result.IsSelf)
                         {
-                            // RPC 成功只代表 Telegram 接受了请求；读取成员快照确认目标确实已在群内，
-                            // 避免出现日志成功但实际未进群的假成功。
-                            var membership = await groupService.GetGroupMembershipSnapshotAsync(accountId, info.TelegramId, ct);
-                            if (result.UserId is not > 0 || !membership.MemberUserIds.Contains(result.UserId.Value))
+                            // InviteUserAsync 已包含 updates/短重试；这里再做轻量兜底，防止边界竞态。
+                            var membership = result.UserId is > 0
+                                ? await groupService.ConfirmGroupMemberAsync(accountId, info.TelegramId, result.UserId.Value, ct, maxAttempts: 2, delayMs: 800)
+                                : (Confirmed: false, MemberCount: 0, MemberUserIds: Array.Empty<long>());
+                            if (result.UserId is not > 0 || !membership.Confirmed)
                             {
                                 groupFailed++;
                                 lock (progressLock) { failed++; }
-                                var verifyError = "Telegram 已接受邀请但成员快照未确认入群";
+                                var verifyError = "Telegram 已接受邀请但短重试后成员快照仍未确认入群";
                                 inviteErrors.Add(target + ": " + verifyError);
                                 await WriteTaskLog("warning", "邀请动作 邀请 " + label + " 失败：" + verifyError);
                             }

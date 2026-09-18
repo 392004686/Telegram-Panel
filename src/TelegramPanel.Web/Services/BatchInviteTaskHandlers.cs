@@ -86,19 +86,21 @@ public sealed class GroupInviteUsersTaskHandler : IModuleTaskHandler
                 if (!result.Success || result.AlreadyInGroup || result.IsSelf || result.UserId is not > 0)
                     return result;
 
-                // legacy 群组邀请此前只看 RPC 是否抛异常，导致“任务成功”但目标实际收不到消息。
-                // 与建群活跃任务保持一致：必须在成员快照中确认目标用户。
-                var snapshot = await groupService.GetGroupMembershipSnapshotAsync(
+                // InviteUserAsync 内部已做 updates + 短重试确认；这里再做一次兜底确认，避免旧调用路径漏判。
+                var confirmed = await groupService.ConfirmGroupMemberAsync(
                     accountId,
                     target.TelegramId,
-                    cancellationToken);
-                if (snapshot.MemberUserIds.Contains(result.UserId.Value))
+                    result.UserId.Value,
+                    cancellationToken,
+                    maxAttempts: 2,
+                    delayMs: 800);
+                if (confirmed.Confirmed)
                     return result;
 
                 return result with
                 {
                     Success = false,
-                    Error = "Telegram 邀请请求已接受，但成员快照未确认目标用户入群"
+                    Error = "Telegram 邀请请求已接受，但短重试后成员快照仍未确认目标用户入群"
                 };
             });
 

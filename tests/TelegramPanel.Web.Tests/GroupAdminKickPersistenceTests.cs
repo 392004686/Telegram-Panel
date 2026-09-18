@@ -223,6 +223,8 @@ public sealed class GroupAdminKickPersistenceTests
         public Task<List<GroupInfo>> GetVisibleGroupsAsync(int accountId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<GroupInfo?> GetGroupInfoAsync(int accountId, long groupId) => throw new NotSupportedException();
         public Task<InviteResult> InviteUserAsync(int accountId, long groupId, string username) => throw new NotSupportedException();
+        public Task<(int MemberCount, IReadOnlyList<long> MemberUserIds)> GetGroupMembershipSnapshotAsync(int accountId, long groupId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<(bool Confirmed, int MemberCount, IReadOnlyList<long> MemberUserIds)> ConfirmGroupMemberAsync(int accountId, long groupId, long userId, CancellationToken cancellationToken = default, int maxAttempts = 4, int delayMs = 1200) => throw new NotSupportedException();
         public Task<List<InviteResult>> BatchInviteUsersAsync(int accountId, long groupId, List<string> usernames, int delayMs = 2000) => throw new NotSupportedException();
         public Task<bool> SetAdminAsync(int accountId, long groupId, string username, AdminRights rights, string title = "Admin") => throw new NotSupportedException();
         public Task<List<SetAdminResult>> BatchSetAdminsAsync(int accountId, long groupId, List<AdminRequest> requests) => throw new NotSupportedException();

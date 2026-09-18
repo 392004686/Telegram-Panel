@@ -40,6 +40,18 @@ public interface IGroupService
     Task<(int MemberCount, IReadOnlyList<long> MemberUserIds)> GetGroupMembershipSnapshotAsync(int accountId, long groupId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 在短窗口内重复读取成员快照，确认目标用户是否已经出现在群成员中。
+    /// 用于消化 Telegram 邀请 RPC 已接受、成员列表稍后才可见的延迟。
+    /// </summary>
+    Task<(bool Confirmed, int MemberCount, IReadOnlyList<long> MemberUserIds)> ConfirmGroupMemberAsync(
+        int accountId,
+        long groupId,
+        long userId,
+        CancellationToken cancellationToken = default,
+        int maxAttempts = 4,
+        int delayMs = 1200);
+
+    /// <summary>
     /// 批量邀请用户到群组。
     /// </summary>
     Task<List<InviteResult>> BatchInviteUsersAsync(int accountId, long groupId, List<string> usernames, int delayMs = 2000);
