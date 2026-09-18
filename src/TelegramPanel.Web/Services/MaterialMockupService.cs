@@ -139,7 +139,7 @@ public sealed class MaterialMockupService
         var img = new Image<Rgba32>(width, height, Color.White);
         var s = width / 412f;
         var ink = new Color(new Rgba32(17, 17, 17));
-        DrawTime(img, clock, 16 * s, 30 * s, Math.Max(10, 15 * s), HorizontalAlignment.Left, VerticalAlignment.End);
+        DrawTime(img, clock, 16 * s, 30 * s, Math.Max(10, 15 * s), HorizontalAlignment.Left, VerticalAlignment.Bottom);
         img.Mutate(x =>
         {
             x.Fill(ink, new EllipsePolygon(width / 2f, 13 * s, Math.Max(2f, 5 * s)));
@@ -163,7 +163,7 @@ public sealed class MaterialMockupService
             x.Draw(ink, Math.Max(1f, 1.5f * s), new RectangularPolygon(ox + 70 * s, oy, 29 * s, 17 * s));
             x.Fill(ink, new RectangularPolygon(ox + 101 * s, oy + 5 * s, 2 * s, 7 * s));
         });
-        DrawTime(img, "45", width - 106 * s + 84.5f * s, oyText(s), Math.Max(8, 9 * s), HorizontalAlignment.Center, VerticalAlignment.End);
+        DrawTime(img, "45", width - 106 * s + 84.5f * s, oyText(s), Math.Max(8, 9 * s), HorizontalAlignment.Center, VerticalAlignment.Bottom);
         return img;
     }
 
@@ -199,13 +199,21 @@ public sealed class MaterialMockupService
         {
             if (StatusFontFamily == null)
             {
-                var fontPath = ResolveAssetPath(Path.Combine("fonts", "StatusBarBold.ttf"));
+                var fontPath = ResolveAssetPath(System.IO.Path.Combine("fonts", "StatusBarBold.ttf"));
                 if (!string.IsNullOrWhiteSpace(fontPath) && File.Exists(fontPath))
                 {
                     var collection = new FontCollection();
                     StatusFontFamily = collection.Add(fontPath);
                 }
-                else if (!SystemFonts.TryGet("Arial", out StatusFontFamily) && !SystemFonts.TryGet("DejaVu Sans", out StatusFontFamily))
+                else if (SystemFonts.TryGet("Arial", out var arial))
+                {
+                    StatusFontFamily = arial;
+                }
+                else if (SystemFonts.TryGet("DejaVu Sans", out var dejavu))
+                {
+                    StatusFontFamily = dejavu;
+                }
+                else
                 {
                     StatusFontFamily = SystemFonts.Families.First();
                 }
@@ -234,14 +242,14 @@ public sealed class MaterialMockupService
     private static string? ResolveStatusBarPath(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return null;
-        return ResolveAssetPath(Path.Combine("mockify", "status-bar", fileName));
+        return ResolveAssetPath(System.IO.Path.Combine("mockify", "status-bar", fileName));
     }
 
     internal static string? ResolveAssetPath(string relative)
     {
         foreach (var root in EnumerateAssetRoots())
         {
-            var candidate = Path.Combine(root, relative);
+            var candidate = System.IO.Path.Combine(root, relative);
             if (File.Exists(candidate)) return candidate;
         }
         return null;
@@ -255,9 +263,9 @@ public sealed class MaterialMockupService
             var dir = new DirectoryInfo(start);
             while (dir != null)
             {
-                var direct = Path.Combine(dir.FullName, "Assets");
+                var direct = System.IO.Path.Combine(dir.FullName, "Assets");
                 if (seen.Add(direct)) yield return direct;
-                var web = Path.Combine(dir.FullName, "src", "TelegramPanel.Web", "Assets");
+                var web = System.IO.Path.Combine(dir.FullName, "src", "TelegramPanel.Web", "Assets");
                 if (seen.Add(web)) yield return web;
                 dir = dir.Parent;
             }
