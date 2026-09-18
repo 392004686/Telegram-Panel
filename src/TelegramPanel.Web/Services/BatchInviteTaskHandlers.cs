@@ -80,7 +80,27 @@ public sealed class GroupInviteUsersTaskHandler : IModuleTaskHandler
                 }
                 return (await groupManagement.ResolveExecuteAccountIdAsync(group), null);
             },
-            (accountId, target, username) => groupService.InviteUserAsync(accountId, target.TelegramId, username));
+            async (accountId, target, username) =>
+            {
+                var result = await groupService.InviteUserAsync(accountId, target.TelegramId, username);
+                if (!result.Success || result.AlreadyInGroup || result.IsSelf || result.UserId is not > 0)
+                    return result;
+
+                // legacy 群组邀请此前只看 RPC 是否抛异常，导致“任务成功”但目标实际收不到消息。
+                // 与建群活跃任务保持一致：必须在成员快照中确认目标用户。
+                var snapshot = await groupService.GetGroupMembershipSnapshotAsync(
+                    accountId,
+                    target.TelegramId,
+                    cancellationToken);
+                if (snapshot.MemberUserIds.Contains(result.UserId.Value))
+                    return result;
+
+                return result with
+                {
+                    Success = false,
+                    Error = "Telegram 邀请请求已接受，但成员快照未确认目标用户入群"
+                };
+            });
 
         await executor.ExecuteAsync(cancellationToken);
     }
