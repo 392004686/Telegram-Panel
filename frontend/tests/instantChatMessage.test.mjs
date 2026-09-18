@@ -23,9 +23,12 @@ test('主布局品牌显示 Telegram X', () => {
   assert.doesNotMatch(layout, />Telegram Panel</)
 })
 
-test('群组详情提供活跃消息规则添加器', () => {
-  assert.match(resources, /活跃消息规则（测试发送）/)
-  assert.match(resources, /按规则发送/)
+test('群组详情使用消息规则统一单次发送入口', () => {
+  assert.match(resources, /使用消息规则发送文字、字典图片、素材图及本地图片\/视频/)
+  assert.match(resources, /engagementFiles/)
+  assert.match(resources, /engagementMerge = ref\(true\)/)
+  assert.match(resources, />立即发送</)
   assert.match(resources, /sendGroupEngagementRules/)
+  assert.match(resources, /panelApi\.sendGroupMessage/)
   assert.match(api, /\/groups\/\$\{id\}\/engagement-rules/)
 })

@@ -159,6 +159,7 @@
       </el-descriptions>
       <el-alert v-if="detail.adminsWarning" class="mt-3" type="warning" :closable="false" show-icon :title="detail.adminsWarning" />
 
+      <template v-if="kind !== 'group'">
       <el-divider content-position="left">单次立即发送</el-divider>
       <el-alert v-if="!auth.canOperate" class="mb-3" type="info" :closable="false" show-icon title="只读账号仅可查看消息发送区域" />
       <el-form v-else label-position="top" class="instant-message-form">
@@ -203,11 +204,20 @@
         <el-checkbox v-model="instantMessage.merge" class="mb-3">合并发送（作为一条媒体组消息）</el-checkbox>
         <el-button type="primary" :loading="instantMessage.sending" @click="sendInstantMessage">立即发送</el-button>
       </el-form>
+      </template>
 
       <template v-if="kind === 'group' && auth.canOperate">
-        <el-divider content-position="left">活跃消息规则（测试发送）</el-divider>
-        <el-alert class="mb-3" type="success" :closable="false" show-icon title="与建群邀请任务使用同一套规则添加器，方便单独验证文字、图片和素材图。" />
+        <el-divider content-position="left">单次立即发送</el-divider>
+        <el-alert class="mb-3" type="success" :closable="false" show-icon title="使用消息规则发送文字、字典图片、素材图及本地图片/视频。" />
         <div class="message-rule-section">
+          <el-form label-position="top">
+            <el-form-item label="执行账号">
+              <el-select v-model="instantMessage.accountId" class="full" filterable>
+                <el-option label="自动选择（优先创建者，其次可用管理员）" :value="0" />
+                <el-option v-for="account in detail.accounts" :key="account.accountId" :label="membershipAccountLabel(account)" :value="account.accountId" :disabled="!isMembershipAccountUsable(account)" />
+              </el-select>
+            </el-form-item>
+          </el-form>
           <div class="message-rule-toolbar">
             <div><strong>消息规则</strong></div>
             <el-button type="primary" plain size="small" @click="addEngagementRule()">添加规则</el-button>
@@ -261,7 +271,16 @@
               </el-form-item>
             </el-form>
           </div>
-          <el-button type="primary" :loading="engagementSending" @click="sendEngagementRules">按规则发送</el-button>
+          <el-form label-position="top">
+            <el-form-item label="图片/视频（可选）">
+              <el-upload v-model:file-list="engagementFiles" :auto-upload="false" multiple :limit="10" accept="image/*,video/mp4,video/quicktime,video/webm,.m4v,.mkv">
+                <el-button>选择图片或视频</el-button>
+                <template #tip><div class="el-upload__tip">最多 10 个文件；图片不超过 20 MB，视频不超过 200 MB。</div></template>
+              </el-upload>
+            </el-form-item>
+          </el-form>
+          <el-checkbox v-model="engagementMerge" class="mb-3">合并发送（作为一条媒体组消息）</el-checkbox>
+          <div><el-button type="primary" :loading="engagementSending" @click="sendEngagementRules">立即发送</el-button></div>
         </div>
       </template>
 
@@ -721,6 +740,8 @@ const instantMessage = reactive({
 })
 const dictionaries = ref<DataDictionary[]>([])
 const engagementSending = ref(false)
+const engagementFiles = ref<UploadUserFile[]>([])
+const engagementMerge = ref(true)
 const engagementRules = ref([createEngagementRule()])
 const textDictionaryNames = computed(() => dictionaries.value.filter(x => x.isEnabled && x.type === 'text' && x.enabledItemCount > 0).map(x => x.name).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')))
 const imageDictionaryNames = computed(() => dictionaries.value.filter(x => x.isEnabled && x.type === 'image' && x.enabledItemCount > 0).map(x => x.name).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')))
@@ -1063,6 +1084,8 @@ async function showDetails(row: Row) {
   instantMessage.accountId = filters.accountId > 0 ? filters.accountId : 0
   instantMessage.text = ''
   instantMessage.files = []
+  engagementFiles.value = []
+  engagementMerge.value = true
   void loadEngagementDictionaries()
   detail.visible = true
   detail.loading = true
@@ -1099,11 +1122,31 @@ async function sendEngagementRules() {
     material_scale: Number(rule.materialScale || 1),
     material_notification: rule.materialNotification || 'none',
   })).filter(rule => rule.text || rule.image_dictionary_token || rule.material_dictionary_token)
-  if (!rules.length) { ElMessage.warning('请至少填写一条规则'); return }
+  const files = engagementFiles.value.flatMap((item) => item.raw ? [item.raw as File] : [])
+  if (!rules.length && files.length === 0) { ElMessage.warning('请至少填写一条规则或选择图片/视频'); return }
+  for (const file of files) {
+    const isImage = file.type.startsWith('image/')
+    const maxBytes = isImage ? 20 * 1024 * 1024 : 200 * 1024 * 1024
+    if (file.size > maxBytes) { ElMessage.warning(`${isImage ? '图片' : '视频'} ${file.name} 超过大小限制`); return }
+  }
   engagementSending.value = true
   try {
-    const result = await panelApi.sendGroupEngagementRules(detail.row.id, { accountId: instantMessage.accountId, rules })
-    ElMessage.success(result.message || '规则发送成功')
+    let message = ''
+    if (rules.length) {
+      const result = await panelApi.sendGroupEngagementRules(detail.row.id, { accountId: instantMessage.accountId, rules })
+      message = result.message || '规则发送成功'
+    }
+    if (files.length) {
+      const form = new FormData()
+      form.append('accountId', String(instantMessage.accountId))
+      form.append('text', '')
+      form.append('merge', String(engagementMerge.value))
+      files.forEach((file) => form.append('files', file, file.name))
+      const result = await panelApi.sendGroupMessage(detail.row.id, form)
+      message = result.message || message || '媒体发送成功'
+      engagementFiles.value = []
+    }
+    ElMessage.success(message || '发送成功')
   } catch (error) {
     ElMessage.error(extractErrorMessage(error))
   } finally {

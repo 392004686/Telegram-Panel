@@ -130,7 +130,10 @@ public sealed class MaterialMockupService
 
         var coverW = Math.Max(1, (int)Math.Round(width * 0.29));
         bar.Mutate(x => x.Fill(Color.White, new RectangularPolygon(0, 0, coverW, height)));
-        DrawTime(bar, clock, width * 0.105f, height * 0.68f, Math.Max(10, height * 0.43f), HorizontalAlignment.Center, VerticalAlignment.Center);
+        // 与购物网站截图素材项目 officialStatusBar() 的 SVG 基线完全一致。
+        // SVG 的 y 是文字基线；ImageSharp 使用 Bottom 才能复现该坐标，Center
+        // 会把文字整体下移并放大视觉占比，造成时间与官方状态栏错位。
+        DrawTime(bar, clock, width * 0.105f, height * 0.68f, Math.Max(10, height * 0.43f), HorizontalAlignment.Center, VerticalAlignment.Bottom);
         return bar;
     }
 
