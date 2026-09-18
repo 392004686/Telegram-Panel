@@ -356,6 +356,7 @@
     <el-dialog v-model="detailDialog.visible" :title="detailDialog.title" width="min(920px, calc(100vw - 24px))">
       <pre class="detail-pre">{{ detailDialog.content }}</pre>
       <div class="log-toolbar"><strong>执行日志</strong>
+        <el-button size="small" :disabled="!detailDialog.taskId" @click="loadTaskLogs">刷新日志</el-button>
         <el-button size="small" :disabled="!detailDialog.taskId || detailDialog.logTotal === 0" @click="exportTaskLogs">导出 CSV</el-button>
       </div>
       <el-table :data="detailDialog.logs" size="small" max-height="320" empty-text="暂无执行日志">

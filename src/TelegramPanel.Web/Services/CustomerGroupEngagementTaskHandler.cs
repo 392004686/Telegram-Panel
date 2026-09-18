@@ -193,6 +193,8 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
                 var templateRendering = host.Services.GetRequiredService<TemplateRenderingService>();
                 var dispatcher = host.Services.GetRequiredService<EngagementMessageDispatchService>();
+                // seq/date 是任务内置变量，先展开后再渲染用户选择的字典变量。
+                // 这样 {seq} 不会被误当成名为 seq 的文本字典而重复随机取值。
                 var rawTitle = (config.GroupTitleTemplate ?? "Group {seq}")
                     .Replace("{seq}", groupSeq.ToString())
                     .Replace("{date}", DateTime.Now.ToString("yyyyMMdd"));
@@ -278,6 +280,29 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         }
 
                         var result = await InviteWithRetryAsync(groupService, accountId, info.TelegramId, target, config, ct, logger);
+                        // 失败结果必须在进入任何成功/成员核验分支前结束处理，
+                        // 防止错误结果因 UserId 或旧客户端返回值被误记为成功。
+                        if (!result.Success)
+                        {
+                            groupFailed++;
+                            lock (progressLock) { failed++; }
+                            var failureReason = result.IsSelf
+                                ? "目标是当前执行账号自己"
+                                : result.AlreadyInGroup
+                                    ? "已在群中，不计入新邀请"
+                                    : (string.IsNullOrWhiteSpace(result.Error) ? "Telegram 未返回失败原因" : result.Error);
+                            inviteErrors.Add(target + ": " + failureReason);
+                            await WriteTaskLog("warning", "邀请动作 邀请 " + label + " 进群 失败：" + failureReason);
+                            if (IsAccountFailure(result.Error))
+                            {
+                                accountIsHealthy = false;
+                                await WriteTaskLog("error", "执行账号 " + accountId + " 已移出本次任务：" + result.Error);
+                                break;
+                            }
+                            await Delay(config, ct);
+                            continue;
+                        }
+
                         if (result.UserId is > 0 && !seenUserIds.Add(result.UserId.Value) && result.Success)
                         {
                             groupFailed++;
@@ -289,8 +314,22 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
                         if (result.Success && !result.AlreadyInGroup && !result.IsSelf)
                         {
-                            invited.Add(customer);
-                            await WriteTaskLog("info", "邀请动作 邀请 " + (string.IsNullOrWhiteSpace(result.DisplayName) ? label : result.DisplayName) + " 进群 成功");
+                            // RPC 成功只代表 Telegram 接受了请求；读取成员快照确认目标确实已在群内，
+                            // 避免出现日志成功但实际未进群的假成功。
+                            var membership = await groupService.GetGroupMembershipSnapshotAsync(accountId, info.TelegramId, ct);
+                            if (result.UserId is not > 0 || !membership.MemberUserIds.Contains(result.UserId.Value))
+                            {
+                                groupFailed++;
+                                lock (progressLock) { failed++; }
+                                var verifyError = "Telegram 已接受邀请但成员快照未确认入群";
+                                inviteErrors.Add(target + ": " + verifyError);
+                                await WriteTaskLog("warning", "邀请动作 邀请 " + label + " 失败：" + verifyError);
+                            }
+                            else
+                            {
+                                invited.Add(customer);
+                                await WriteTaskLog("info", "邀请动作 邀请 " + (string.IsNullOrWhiteSpace(result.DisplayName) ? label : result.DisplayName) + " 进群 成功（成员已确认）");
+                            }
                         }
                         else
                         {
@@ -509,6 +548,12 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         // 授权密钥失效
         if (text.Contains("AUTH_KEY") || text.Contains("AUTH_RESTART")) return true;
+
+        // 代理/传输链路已断开时，当前 Telegram 客户端不可继续复用；
+        // 将该账号移出本次任务健康池，剩余群组继续使用其他账号。
+        if (text.Contains("代理连接提前关闭") || text.Contains("PROXY") ||
+            text.Contains("CONNECTION CLOSED") || text.Contains("SOCKET CLOSED") ||
+            text.Contains("TRANSPORT CLOSED")) return true;
 
         // 超时（3次重试后）- 由 InviteWithRetryAsync 处理
         // 这里只检查明确的超时失败消息
