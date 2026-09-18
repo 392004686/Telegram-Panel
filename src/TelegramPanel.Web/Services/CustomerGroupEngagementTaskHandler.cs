@@ -52,7 +52,15 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                 .ToListAsync(cancellationToken);
             logger.LogInformation("从分类 {CategoryId} 加载到 {Count} 个可用执行账号",
                 config.AccountCategoryId, config.AccountIds.Count);
-            await WriteTaskLog("info", $"从账号分类 #{config.AccountCategoryId} 加载 {config.AccountIds.Count} 个可用执行账号");
+            var categoryName = config.AccountCategoryName;
+            if (string.IsNullOrWhiteSpace(categoryName))
+            {
+                categoryName = await db.AccountCategories.AsNoTracking()
+                    .Where(x => x.Id == config.AccountCategoryId)
+                    .Select(x => x.Name)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+            await WriteTaskLog("info", $"从 账号分类:{categoryName ?? "未命名"} (#{config.AccountCategoryId})加载 {config.AccountIds.Count} 个可用执行账号");
         }
 
         if (config.AccountIds.Count == 0)
@@ -66,7 +74,9 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         // 加载客户，按客户分类统计
         var query = db.Customers.Include(x => x.GroupAssignments)
-            .Where(x => x.InteractionStatus != "contacted" && !config.CompletedCustomerIds.Contains(x.Id));
+            .Where(x => !config.CompletedCustomerIds.Contains(x.Id));
+        if (!config.ForceRecontact)
+            query = query.Where(x => x.InteractionStatus != "contacted");
 
         if (config.CustomerGroupIds.Count > 0)
         {
@@ -91,9 +101,11 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         if (customers.Count == 0)
         {
-            var msg = contactedCount > 0
-                ? $"没有待邀请客户：所选分类里 {contactedCount} 人全部已是「已沟通」，任务不会重复建群邀请。请先在客户列表改回未执行，或换一个还有未沟通客户的分类。"
-                : "没有待邀请客户：所选客户分类为空。";
+            var msg = config.ForceRecontact
+                ? "没有可执行客户：所选客户分类为空。"
+                : contactedCount > 0
+                    ? $"没有待邀请客户：所选分类里 {contactedCount} 人全部已是「已沟通」，任务不会重复建群邀请。请先在客户列表改回未执行，勾选强制二次确认，或换一个还有未沟通客户的分类。"
+                    : "没有待邀请客户：所选客户分类为空。";
             logger.LogWarning("{Message}", msg);
             await WriteTaskLog("error", msg);
             throw new InvalidOperationException(msg);
@@ -179,17 +191,31 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                     accountLock.Release();
                 }
 
-                var title = (config.GroupTitleTemplate ?? "客户沟通群 {seq}")
+                var templateRendering = host.Services.GetRequiredService<TemplateRenderingService>();
+                var dispatcher = host.Services.GetRequiredService<EngagementMessageDispatchService>();
+                var rawTitle = (config.GroupTitleTemplate ?? "Group {seq}")
                     .Replace("{seq}", groupSeq.ToString())
                     .Replace("{date}", DateTime.Now.ToString("yyyyMMdd"));
+                var titleResult = await templateRendering.RenderTextTemplateDetailedAsync(rawTitle, ct);
+                var title = string.IsNullOrWhiteSpace(titleResult.Text) ? rawTitle : titleResult.Text;
+                var aboutRaw = config.GroupAboutTemplate ?? string.Empty;
+                var about = string.IsNullOrWhiteSpace(aboutRaw) ? string.Empty : await templateRendering.RenderTextTemplateAsync(aboutRaw, ct);
+                if (titleResult.Picks.Count > 0)
+                {
+                    var pick = titleResult.Picks[0];
+                    await WriteTaskLog("info", "创建群组动作 加载字典 " + pick.DictionaryName + " 随机值" + pick.Index + " 群名为" + title);
+                }
+                else
+                {
+                    await WriteTaskLog("info", "创建群组动作 加载字典 随机值" + groupSeq + " 群名为" + title);
+                }
 
                 logger.LogInformation("准备创建第 {Seq} 个群组，标题: {Title}，使用账号 {AccountId}，邀请 {Count} 个客户",
                     groupSeq, title, accountId, chunk.Count);
 
                 try
                 {
-                    // 创建群组
-                    var info = await groupService.CreatePrivateGroupAsync(accountId, title, config.GroupAboutTemplate ?? string.Empty);
+                    var info = await groupService.CreatePrivateGroupAsync(accountId, title, about);
                     logger.LogInformation("成功创建群组 {TelegramId}，标题: {Title}", info.TelegramId, title);
 
                     var now = DateTime.UtcNow;
@@ -198,7 +224,7 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         TelegramId = info.TelegramId,
                         AccessHash = info.AccessHash,
                         Title = title,
-                        About = config.GroupAboutTemplate,
+                        About = about,
                         MemberCount = Math.Max(1, info.MemberCount),
                         CreatorAccountId = accountId,
                         CreatedAt = info.CreatedAt ?? now,
@@ -207,11 +233,17 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                     });
 
                     await groupManagement.UpsertAccountGroupAsync(accountId, saved.Id, true, true, now);
+                    await WriteTaskLog("info", "待邀请 " + chunk.Count + " 人");
 
-                    // 邀请客户
+                    var executor = await db.Accounts.AsNoTracking()
+                        .Where(x => x.Id == accountId)
+                        .Select(x => new { x.UserId, x.Phone })
+                        .FirstOrDefaultAsync(ct);
                     var invited = new List<Customer>();
                     var inviteErrors = new List<string>();
                     var accountIsHealthy = true;
+                    var groupFailed = 0;
+                    var seenUserIds = new HashSet<long>();
 
                     foreach (var customer in chunk)
                     {
@@ -221,38 +253,57 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                             break;
                         }
 
+                        var label = CustomerLabel(customer);
+                        if (executor != null &&
+                            ((executor.UserId > 0 && customer.TelegramUserId == executor.UserId) ||
+                             (!string.IsNullOrWhiteSpace(executor.Phone) && string.Equals(NormalizePhone(executor.Phone), NormalizePhone(customer.Phone), StringComparison.Ordinal))))
+                        {
+                            groupFailed++;
+                            lock (progressLock) { failed++; }
+                            await WriteTaskLog("info", "邀请动作 邀请 " + label + " 进群 失败：目标是当前执行账号自己");
+                            continue;
+                        }
+
                         var target = !string.IsNullOrWhiteSpace(customer.Username)
                             ? "@" + customer.Username
                             : customer.Phone;
 
                         if (string.IsNullOrWhiteSpace(target))
                         {
+                            groupFailed++;
                             lock (progressLock) { failed++; }
-                            inviteErrors.Add($"客户 #{customer.Id} 缺少手机号和用户名");
-                            logger.LogWarning("客户 {CustomerId} 缺少手机号和用户名", customer.Id);
+                            inviteErrors.Add("客户 #" + customer.Id + " 缺少手机号和用户名");
+                            await WriteTaskLog("info", "邀请动作 邀请 " + label + " 进群 失败：缺少手机号和用户名");
                             continue;
                         }
 
                         var result = await InviteWithRetryAsync(groupService, accountId, info.TelegramId, target, config, ct, logger);
+                        if (result.UserId is > 0 && !seenUserIds.Add(result.UserId.Value) && result.Success)
+                        {
+                            groupFailed++;
+                            lock (progressLock) { failed++; }
+                            await WriteTaskLog("info", "邀请动作 邀请 " + label + " 进群 失败：与本群已邀请用户重复");
+                            await Delay(config, ct);
+                            continue;
+                        }
 
-                        if (result.Success)
+                        if (result.Success && !result.AlreadyInGroup && !result.IsSelf)
                         {
                             invited.Add(customer);
-                            logger.LogInformation("成功邀请客户 {CustomerId} ({Target})", customer.Id, target);
+                            await WriteTaskLog("info", "邀请动作 邀请 " + (string.IsNullOrWhiteSpace(result.DisplayName) ? label : result.DisplayName) + " 进群 成功");
                         }
                         else
                         {
+                            groupFailed++;
                             lock (progressLock) { failed++; }
-                            inviteErrors.Add($"{target}: {result.Error}");
-                            logger.LogWarning("邀请客户 {CustomerId} ({Target}) 失败: {Error}",
-                                customer.Id, target, result.Error);
+                            var reason = result.IsSelf ? "目标是当前执行账号自己" : (result.AlreadyInGroup ? "已在群中，不计入新邀请" : (result.Error ?? "邀请失败"));
+                            inviteErrors.Add(target + ": " + reason);
+                            await WriteTaskLog("info", "邀请动作 邀请 " + label + " 进群 失败：" + reason);
 
-                            // 检查是否是账号级别的失败
                             if (IsAccountFailure(result.Error))
                             {
                                 accountIsHealthy = false;
                                 logger.LogError("执行账号 {AccountId} 标记为失效: {Error}", accountId, result.Error);
-                                // 不将账号放回健康池
                                 break;
                             }
                         }
@@ -260,13 +311,17 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         await Delay(config, ct);
                     }
 
-                    // 账号仍然健康，放回池中
                     if (accountIsHealthy)
                     {
                         healthyAccounts.Add(accountId);
                     }
 
-                    // 检查成功邀请数量
+                    var snapshot = await groupService.GetGroupMembershipSnapshotAsync(accountId, info.TelegramId, ct);
+                    saved.MemberCount = snapshot.MemberCount > 0 ? snapshot.MemberCount : Math.Max(1, 1 + invited.Count);
+                    saved.SyncedAt = DateTime.UtcNow;
+                    await groupManagement.CreateOrUpdateGroupAsync(saved);
+                    await WriteTaskLog("info", "群组 " + title + "(" + info.TelegramId + ")  邀请成功 " + invited.Count + " 人，失败 " + groupFailed + " 人，成员数 " + saved.MemberCount);
+
                     if (invited.Count < Math.Max(1, config.MinSuccessfulInvites))
                     {
                         logger.LogWarning("群组 {TelegramId} 成功邀请人数 {Invited} 不足最小要求 {Min}，跳过活跃消息发送",
@@ -275,15 +330,6 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         return;
                     }
 
-                    saved.MemberCount = Math.Max(saved.MemberCount, 1 + invited.Count);
-                    saved.SyncedAt = DateTime.UtcNow;
-                    await groupManagement.CreateOrUpdateGroupAsync(saved);
-                    logger.LogInformation("群组 {TelegramId} 成功邀请 {Count} 人，开始发送活跃消息",
-                        info.TelegramId, invited.Count);
-                    db.BatchTaskLogs.Add(new BatchTaskLog { BatchTaskId = host.TaskId, Level = "info", Message = "群 " + info.TelegramId + " 邀请成功 " + invited.Count + " 人，成员数 " + saved.MemberCount, CreatedAt = DateTime.UtcNow });
-                    await db.SaveChangesAsync(ct);
-
-                    // 发送活跃消息
                     var resolved = await tools.ResolveChatTargetAsync(accountId, info.TelegramId.ToString(), ct);
                     if (!resolved.Success || resolved.Target == null)
                     {
@@ -291,93 +337,39 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
                         throw new InvalidOperationException(resolved.Error ?? "无法解析新建群组");
                     }
 
-                    var templateRendering = host.Services.GetRequiredService<TemplateRenderingService>();
-                    var assetStorage = host.Services.GetRequiredService<ImageAssetStorageService>();
-                    var mockup = host.Services.GetRequiredService<MaterialMockupService>();
                     var rules = config.MessageRules.Count > 0
                         ? config.MessageRules
                         : config.ActivityMessages.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => new MessageRule { Text = x }).ToList();
                     if (rules.Count == 0) rules.Add(new MessageRule { Text = "Hello" });
-                    async Task SendRuleAsync(MessageRule item, string logLabel)
-                    {
-                        var text = string.IsNullOrWhiteSpace(item.Text) ? string.Empty : await templateRendering.RenderTextTemplateAsync(item.Text, ct);
-                        var materialToken = item.MaterialDictionaryToken;
-                        var imageToken = item.ImageDictionaryToken;
-                        if (!string.IsNullOrWhiteSpace(materialToken))
-                        {
-                            var asset = await templateRendering.ResolveImageTemplateAsync(materialToken, ct);
-                            await using var baseImage = await assetStorage.OpenReadAsync(asset.AssetPath, ct);
-                            var png = await mockup.ComposeAsync(baseImage, new MaterialMockupRequest
-                            {
-                                DeviceId = string.IsNullOrWhiteSpace(item.MaterialDevice) ? "iphone-16-pro-max" : item.MaterialDevice,
-                                TimeMode = string.IsNullOrWhiteSpace(item.MaterialTimeMode) ? "now" : item.MaterialTimeMode,
-                                Time = item.MaterialTime,
-                                Scale = item.MaterialScale <= 0 ? 1 : item.MaterialScale,
-                                Notification = string.IsNullOrWhiteSpace(item.MaterialNotification) ? "none" : item.MaterialNotification
-                            }, ct);
-                            await using var generated = new MemoryStream(png);
-                            var sent = await tools.SendPhotoToResolvedChatAsync(accountId, resolved.Target, generated, "material.png", text, null, ct);
-                            if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃素材图片发送失败");
-                            await WriteTaskLog("info", logLabel + " 已发送素材图");
-                        }
-                        else if (!string.IsNullOrWhiteSpace(imageToken))
-                        {
-                            var asset = await templateRendering.ResolveImageTemplateAsync(imageToken, ct);
-                            await using var image = await assetStorage.OpenReadAsync(asset.AssetPath, ct);
-                            var sent = await tools.SendPhotoToResolvedChatAsync(accountId, resolved.Target, image, asset.FileName, text, null, ct);
-                            if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃图片发送失败");
-                            await WriteTaskLog("info", logLabel + " 已发送图片字典");
-                        }
-                        else
-                        {
-                            if (string.IsNullOrWhiteSpace(text)) return;
-                            var sent = await tools.SendMessageToResolvedChatAsync(accountId, resolved.Target, text, cancellationToken: ct);
-                            if (!sent.Success) throw new InvalidOperationException(sent.Error ?? "活跃消息发送失败");
-                            await WriteTaskLog("info", logLabel + " 已发送文字");
-                        }
-                        await Delay(config, ct);
-                    }
                     var ruleIndex = 0;
                     foreach (var rule in rules)
                     {
                         ruleIndex++;
-                        await SendRuleAsync(rule, "规则" + ruleIndex);
-                        var extraTextIndex = 0;
-                        foreach (var extraText in rule.ExtraTexts ?? [])
-                        {
-                            extraTextIndex++;
-                            await SendRuleAsync(new MessageRule { Text = extraText }, "规则" + ruleIndex + " 附加文字" + extraTextIndex);
-                        }
-                        var extraImageIndex = 0;
-                        foreach (var extraImage in rule.ExtraImages ?? [])
-                        {
-                            extraImageIndex++;
-                            await SendRuleAsync(extraImage, "规则" + ruleIndex + " 附加图片" + extraImageIndex);
-                        }
+                        await dispatcher.SendRuleAsync(accountId, resolved.Target, rule, "规则" + ruleIndex, msg => WriteTaskLog("info", msg), ct);
+                        await Delay(config, ct);
                     }
 
-                    // 标记客户为已沟通
-                    lock (progressLock)
+                    foreach (var customer in invited)
                     {
-                        foreach (var customer in invited)
+                        var label = CustomerLabel(customer);
+                        lock (progressLock)
                         {
                             customer.InteractionStatus = "contacted";
                             customer.LastInteractionAt ??= DateTime.UtcNow;
                             customer.UpdatedAt = DateTime.UtcNow;
-
                             if (config.CompletedCustomerIds.Add(customer.Id))
                             {
                                 completed++;
                             }
                         }
+                        await WriteTaskLog("info", "标记 " + label + " 已沟通");
                     }
 
                     await db.SaveChangesAsync(ct);
                     await UpdateProgress(host, config, db, taskManagement, completed, failed, ct);
 
                     logger.LogInformation("完成第 {Seq} 个群组，已完成 {Completed}，失败 {Failed}",
-                        groupSeq, completed, failed);
-                }
+                        groupSeq, completed, failed);                }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
                     logger.LogError(ex, "创建群组或邀请过程中发生异常");
@@ -406,7 +398,7 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
             });
 
         logger.LogInformation("批量建群邀请任务完成，已完成 {Completed}，失败 {Failed}", completed, failed);
-        await WriteTaskLog("info", $"任务结束，完成 {completed}，失败 {failed}");
+        await WriteTaskLog("info", $"任务结束，完成邀请成功 {completed} 人，失败{failed}人。");
 
         if (healthyAccounts.IsEmpty)
         {
@@ -415,6 +407,20 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
         }
     }
 
+    private static string CustomerLabel(Customer customer)
+    {
+        if (!string.IsNullOrWhiteSpace(customer.DisplayName)) return customer.DisplayName.Trim();
+        if (!string.IsNullOrWhiteSpace(customer.Nickname)) return customer.Nickname.Trim();
+        if (!string.IsNullOrWhiteSpace(customer.Username)) return "@" + customer.Username.Trim().TrimStart('@');
+        if (!string.IsNullOrWhiteSpace(customer.Phone)) return customer.Phone.Trim();
+        return "#" + customer.Id;
+    }
+
+    private static string NormalizePhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return string.Empty;
+        return new string(phone.Where(char.IsDigit).ToArray());
+    }
     private static async Task UpdateProgress(
         IModuleTaskExecutionHost host,
         Config config,
@@ -583,6 +589,9 @@ public sealed class CustomerGroupEngagementTaskHandler : IModuleTaskHandler
 
         [JsonPropertyName("completed_customer_ids")]
         public HashSet<int> CompletedCustomerIds { get; set; } = [];
+
+        [JsonPropertyName("force_recontact")]
+        public bool ForceRecontact { get; set; }
     }
 
     public sealed class MessageRule

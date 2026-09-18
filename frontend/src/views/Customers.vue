@@ -33,6 +33,7 @@
         <el-button @click="selectCurrentPage">全选本页</el-button>
         <el-button @click="clearSelection">取消全选</el-button>
         <el-button :disabled="!selectedIds.length" @click="openBatchGroup">批量修改分类（已选）</el-button>
+        <el-button :disabled="!selectedIds.length" @click="openBatchStatus">批量修改执行状态（已选）</el-button>
         <el-button type="danger" plain :disabled="!selectedIds.length" @click="batchDelete">批量删除（已选）</el-button>
         <el-dropdown trigger="click" @command="handleBatchCommand">
           <el-button>
@@ -95,6 +96,14 @@
       <el-select v-model="batchGroup.groupId" clearable class="full" placeholder="清空选择表示未分类"><el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id"/></el-select>
       <template #footer><el-button @click="batchGroup.visible=false">取消</el-button><el-button type="primary" :loading="batchGroup.saving" @click="applyBatchGroup">保存</el-button></template>
     </el-dialog>
+    <el-dialog v-model="batchStatus.visible" title="批量修改执行状态" width="440px">
+      <el-select v-model="batchStatus.status" class="full">
+        <el-option label="未执行" value="uncontacted"/>
+        <el-option label="已沟通" value="contacted"/>
+      </el-select>
+      <div class="muted" style="margin-top:8px">将已选 {{ selectedIds.length }} 个客户改为所选执行状态。</div>
+      <template #footer><el-button @click="batchStatus.visible=false">取消</el-button><el-button type="primary" :loading="batchStatus.saving" @click="applyBatchStatus">保存</el-button></template>
+    </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -117,6 +126,7 @@ const filters = reactive({ page: 1, pageSize: 20, search: '', status: '', intera
 const importDialog = reactive({ visible: false, saving: false, batchName: '', groupId: undefined as number | undefined, values: '' })
 const detailDialog = reactive({ visible: false, loading: false, data: null as CustomerDetail | null })
 const batchGroup = reactive({ visible: false, saving: false, groupId: undefined as number | undefined })
+const batchStatus = reactive({ visible: false, saving: false, status: 'uncontacted' as 'contacted' | 'uncontacted' })
 
 const statusLabel = (v: string) => ({ pending: '待查询', found: '已确认', not_found: '未确认', error: '查询异常' }[v] || v)
 const statusType = (v: string) => (v === 'found' ? 'success' : v === 'pending' ? 'info' : 'warning')
@@ -195,6 +205,17 @@ async function remove(row: CustomerItem) {
   await loadCustomers()
 }
 function openBatchGroup() { batchGroup.groupId = undefined; batchGroup.visible = true }
+function openBatchStatus() { batchStatus.status = 'uncontacted'; batchStatus.visible = true }
+async function applyBatchStatus() {
+  if (!selectedIds.value.length) return
+  batchStatus.saving = true
+  try {
+    await panelApi.batchCustomers(selectedIds.value, 'set_interaction', undefined, batchStatus.status)
+    ElMessage.success(batchStatus.status === 'contacted' ? '已标记为已沟通' : '已标记为未执行')
+    batchStatus.visible = false
+    await loadCustomers()
+  } finally { batchStatus.saving = false }
+}
 async function applyBatchGroup() {
   batchGroup.saving = true
   try {

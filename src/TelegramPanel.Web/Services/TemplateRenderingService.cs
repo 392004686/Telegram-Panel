@@ -69,12 +69,18 @@ public sealed class TemplateRenderingService
         await EnsureDictionaryAvailableAsync(tokenName, DataDictionaryTypes.Image, cancellationToken);
     }
 
+    public sealed record TemplateRenderResult(string Text, IReadOnlyList<DataDictionaryService.DictionaryTextPick> Picks);
+
     public async Task<string> RenderTextTemplateAsync(string template, CancellationToken cancellationToken = default)
+        => (await RenderTextTemplateDetailedAsync(template, cancellationToken)).Text;
+
+    public async Task<TemplateRenderResult> RenderTextTemplateDetailedAsync(string template, CancellationToken cancellationToken = default)
     {
         template = template ?? string.Empty;
         var matches = TokenRegex.Matches(template);
+        var picks = new List<DataDictionaryService.DictionaryTextPick>();
         if (matches.Count == 0)
-            return NormalizeEscapedNewlines(template);
+            return new TemplateRenderResult(NormalizeEscapedNewlines(template), picks);
 
         var builder = new StringBuilder();
         var lastIndex = 0;
@@ -86,13 +92,14 @@ public sealed class TemplateRenderingService
 
             builder.Append(template, lastIndex, match.Index - lastIndex);
             var tokenName = match.Groups["name"].Value;
-            var resolved = await ResolveTextTokenAsync(tokenName, cancellationToken);
-            builder.Append(resolved);
+            var resolved = await ResolveTextTokenDetailedAsync(tokenName, cancellationToken);
+            builder.Append(resolved.Text);
+            if (resolved.Pick != null) picks.Add(resolved.Pick);
             lastIndex = match.Index + match.Length;
         }
 
         builder.Append(template, lastIndex, template.Length - lastIndex);
-        return NormalizeEscapedNewlines(builder.ToString());
+        return new TemplateRenderResult(NormalizeEscapedNewlines(builder.ToString()), picks);
     }
 
     public static string NormalizeEscapedNewlines(string? value)
@@ -153,12 +160,13 @@ public sealed class TemplateRenderingService
         return match.Groups["name"].Value;
     }
 
-    private async Task<string> ResolveTextTokenAsync(string tokenName, CancellationToken cancellationToken)
+    private async Task<(string Text, DataDictionaryService.DictionaryTextPick? Pick)> ResolveTextTokenDetailedAsync(string tokenName, CancellationToken cancellationToken)
     {
         if (string.Equals(tokenName, "time", StringComparison.OrdinalIgnoreCase))
-            return DateTime.Now.ToString("yyyyMMddHHmmss");
+            return (DateTime.Now.ToString("yyyyMMddHHmmss"), null);
 
-        return await _dataDictionaryService.ResolveTextValueAsync(tokenName, cancellationToken);
+        var pick = await _dataDictionaryService.ResolveTextValueDetailedAsync(tokenName, cancellationToken);
+        return (pick.Value, pick);
     }
 
     private async Task EnsureDictionaryAvailableAsync(string tokenName, string expectedType, CancellationToken cancellationToken)

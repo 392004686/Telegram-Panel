@@ -106,7 +106,7 @@ public interface IChannelService
 /// <summary>
 /// 邀请结果
 /// </summary>
-public record InviteResult(string Username, bool Success, string? Error = null);
+public record InviteResult(string Username, bool Success, string? Error = null, bool AlreadyInGroup = false, bool IsSelf = false, long? UserId = null, string? DisplayName = null);
 
 /// <summary>
 /// 设置管理员结果

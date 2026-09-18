@@ -210,7 +210,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="createDialog.visible" title="新建任务" width="min(760px, calc(100vw - 24px))" destroy-on-close class="task-dialog">
+    <el-dialog v-model="createDialog.visible" title="新建任务" width="min(720px, calc(100vw - 24px))" destroy-on-close class="task-dialog">
       <el-alert
         title="立即执行会创建一条后台执行记录；Cron 计划会按面板时区持续调度，并自动加入随机延迟避免多个计划任务整点同时启动。"
         type="info"
@@ -371,7 +371,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editTaskDialog.visible" :title="`编辑任务 #${editTaskDialog.id}`" width="min(760px, calc(100vw - 24px))" destroy-on-close class="task-dialog">
+    <el-dialog v-model="editTaskDialog.visible" :title="`编辑任务 #${editTaskDialog.id}`" width="min(720px, calc(100vw - 24px))" destroy-on-close class="task-dialog">
       <el-alert
         title="编辑会更新当前任务配置；若任务已完成或失败，可保存后使用重跑创建新任务。"
         type="info"

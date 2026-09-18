@@ -495,6 +495,7 @@ builder.Services.AddScoped<ChannelAdminPresetsService>();
 builder.Services.AddScoped<ChannelInvitePresetsService>();
 builder.Services.AddSingleton<ImageAssetStorageService>();
 builder.Services.AddSingleton<MaterialMockupService>();
+builder.Services.AddScoped<EngagementMessageDispatchService>();
 builder.Services.AddSingleton<CronExpressionService>();
 builder.Services.AddScoped<DataDictionaryService>();
 builder.Services.AddScoped<TemplateRenderingService>();

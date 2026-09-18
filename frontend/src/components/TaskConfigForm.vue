@@ -499,7 +499,11 @@
       <el-alert title="核心流程：创建群、邀请客户、发送活跃消息并标记已沟通；任务后台持久化执行。" type="info" :closable="false" class="mb-3" />
       <el-form-item label="执行账号 ID"><el-input v-model="forms.groupEngagement.accountIdsText" placeholder="1,2,3；留空使用账号分类" /></el-form-item>
       <el-form-item label="执行账号分类"><el-select v-model="forms.groupEngagement.accountCategoryId" clearable class="full"><el-option v-for="item in accountCategories" :key="item.id" :label="categoryLabel(item)" :value="item.id" /></el-select></el-form-item>
-      <el-form-item label="客户分类"><el-select v-model="forms.groupEngagement.customerGroupIds" multiple collapse-tags class="full"><el-option v-for="item in customerGroups" :key="item.id" :label="`${item.name}（未沟通 ${item.pendingCustomerCount ?? 0} / 共 ${item.customerCount ?? 0}）`" :value="item.id" /></el-select><div class="form-hint no-offset">只邀请未沟通客户；已沟通的会跳过，不会重复建群。当前未沟通 {{ selectedPendingCount }} 人，分类合计 {{ selectedCustomerCount }} 人，重叠客户执行时自动去重。</div></el-form-item>
+      <el-form-item label="客户分类"><el-select v-model="forms.groupEngagement.customerGroupIds" multiple collapse-tags class="full"><el-option v-for="item in customerGroups" :key="item.id" :label="`${item.name}（未沟通 ${item.pendingCustomerCount ?? 0} / 共 ${item.customerCount ?? 0}）`" :value="item.id" /></el-select><div class="form-hint no-offset">默认只邀请未沟通客户。当前未沟通 {{ selectedPendingCount }} 人，分类合计 {{ selectedCustomerCount }} 人，重叠客户执行时自动去重。</div></el-form-item>
+      <el-form-item label="强制二次确认">
+        <el-switch v-model="forms.groupEngagement.forceRecontact" active-text="允许已沟通客户再次执行" inactive-text="跳过已沟通" />
+        <div class="form-hint no-offset">勾选后不再拦截已沟通客户，可重复建群邀请，不进行任务拦截。</div>
+      </el-form-item>
       <el-row :gutter="12"><el-col :span="12"><el-form-item label="每群邀请数"><el-input-number v-model="forms.groupEngagement.customersPerGroup" :min="1" :max="200" class="full" /></el-form-item></el-col><el-col :span="12"><el-form-item label="最少成功邀请"><el-input-number v-model="forms.groupEngagement.minSuccessfulInvites" :min="1" :max="200" class="full" /></el-form-item></el-col></el-row>
       <el-row :gutter="12"><el-col :span="12"><el-form-item label="分配模式"><el-select v-model="forms.groupEngagement.assignmentMode" class="full"><el-option label="队列" value="queue" /><el-option label="随机" value="random" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="并发账号数"><el-input-number v-model="forms.groupEngagement.workerCount" :min="1" :max="50" class="full" /></el-form-item></el-col></el-row>
       <el-form-item label="群名称模板"><el-input v-model="forms.groupEngagement.groupTitleTemplate" /></el-form-item><el-form-item label="群简介模板"><el-input v-model="forms.groupEngagement.groupAboutTemplate" /></el-form-item>
@@ -553,13 +557,9 @@
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="倍率">
-                  <el-select v-model="rule.materialScale" class="full">
-                    <el-option :value="0.5" label="0.5x" />
-                    <el-option :value="1" label="1x" />
-                    <el-option :value="1.5" label="1.5x" />
-                  </el-select>
-                </el-form-item>
+                <el-form-item label="图片倍率">
+                  <el-input-number v-model="rule.materialScale" :min="0.1" :max="4" :step="0.1" :precision="2" class="full" />
+                  <div class="form-hint no-offset compact">自定义倍率，默认 1。1 倍对应 iPhone 16 Pro Max 为 440×956。</div></el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="Android 通知">
@@ -943,7 +943,7 @@ function applyInitialConfig() {
     form.customersPerGroup = readNumber(cfg.customers_per_group, 10)
     form.assignmentMode = readString(cfg.assignment_mode, 'queue'); form.workerCount = readNumber(cfg.worker_count, 1)
     form.groupTitleTemplate = readString(cfg.group_title_template, '客户沟通群 {seq}'); form.groupAboutTemplate = readString(cfg.group_about_template)
-    form.minSuccessfulInvites = readNumber(cfg.min_successful_invites, 1); form.minDelaySeconds = readNumber(cfg.min_delay_seconds, 3); form.maxDelaySeconds = readNumber(cfg.max_delay_seconds, 8)
+    form.minSuccessfulInvites = readNumber(cfg.min_successful_invites, 1); form.minDelaySeconds = readNumber(cfg.min_delay_seconds, 3); form.maxDelaySeconds = readNumber(cfg.max_delay_seconds, 8); form.forceRecontact = readBoolean(cfg.force_recontact)
     const legacyMessages = readStringArray(cfg.activity_messages)
     const rules = Array.isArray(cfg.message_rules) ? cfg.message_rules : []
     form.messageRules = rules.length
@@ -1379,12 +1379,12 @@ function buildGroupEngagementDraft(): TaskConfigDraft {
     const pic = rule.materialDictionaryName || rule.imageDictionaryName
     if (pic && !imageDictionaryNames.value.includes(pic) && !materialDictionaryNames.value.includes(pic)) throw new Error("请选择有效的素材图片或图片字典")
   }
-  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: messageRules.map((x) => x.text).filter(Boolean), message_rules: f.messageRules.map((rule) => ({ text: rule.text, image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null, material_dictionary_token: rule.materialDictionaryName ? dictionaryToken(rule.materialDictionaryName) : null, material_device: rule.materialDevice || 'iphone-16-pro-max', material_time_mode: rule.materialTimeMode || 'now', material_time: rule.materialTime || '15:59', material_scale: Number(rule.materialScale || 1), material_notification: rule.materialNotification || 'none', extra_texts: (rule.extraTexts || []).map((x) => x.text).filter(Boolean), extra_images: (rule.extraImages || []).map((x) => ({ image_dictionary_token: x.imageDictionaryName ? dictionaryToken(x.imageDictionaryName) : null, material_dictionary_token: x.materialDictionaryName ? dictionaryToken(x.materialDictionaryName) : null, material_device: rule.materialDevice || 'iphone-16-pro-max', material_time_mode: rule.materialTimeMode || 'now', material_time: rule.materialTime || '15:59', material_scale: Number(rule.materialScale || 1), material_notification: rule.materialNotification || 'none' })) })), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds }
-  if (selectedPendingCount.value <= 0) throw new Error("所选客户分类没有未沟通客户。已沟通的不会重复建群邀请，请先改回未执行或换分类。")
-  return { total: Math.max(1, selectedPendingCount.value), config: JSON.stringify(config), canSubmit: true, validationError: null }
+  const config = { account_ids: ids, account_category_id: f.accountCategoryId || null, account_category_name: accountCategoryName, customer_group_ids: f.customerGroupIds, customer_group_names: customerGroupNames, customers_per_group: f.customersPerGroup, assignment_mode: f.assignmentMode, worker_count: f.workerCount, group_title_template: f.groupTitleTemplate, group_about_template: f.groupAboutTemplate, activity_messages: messageRules.map((x) => x.text).filter(Boolean), message_rules: f.messageRules.map((rule) => ({ text: rule.text, image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null, material_dictionary_token: rule.materialDictionaryName ? dictionaryToken(rule.materialDictionaryName) : null, material_device: rule.materialDevice || 'iphone-16-pro-max', material_time_mode: rule.materialTimeMode || 'now', material_time: rule.materialTime || '15:59', material_scale: Number(rule.materialScale || 1), material_notification: rule.materialNotification || 'none', extra_texts: (rule.extraTexts || []).map((x) => x.text).filter(Boolean), extra_images: (rule.extraImages || []).map((x) => ({ image_dictionary_token: x.imageDictionaryName ? dictionaryToken(x.imageDictionaryName) : null, material_dictionary_token: x.materialDictionaryName ? dictionaryToken(x.materialDictionaryName) : null, material_device: rule.materialDevice || 'iphone-16-pro-max', material_time_mode: rule.materialTimeMode || 'now', material_time: rule.materialTime || '15:59', material_scale: Number(rule.materialScale || 1), material_notification: rule.materialNotification || 'none' })) })), min_successful_invites: f.minSuccessfulInvites, min_delay_seconds: f.minDelaySeconds, max_delay_seconds: f.maxDelaySeconds, force_recontact: !!f.forceRecontact }
+  if (!f.forceRecontact && selectedPendingCount.value <= 0) throw new Error("所选客户分类没有未沟通客户。已沟通的不会重复建群邀请，请先改回未执行、勾选强制二次确认，或换分类。")
+  return { total: Math.max(1, f.forceRecontact ? Math.max(selectedCustomerCount.value, selectedPendingCount.value, 1) : selectedPendingCount.value), config: JSON.stringify(config), canSubmit: true, validationError: null }
 }
 
-function defaultGroupEngagementForm() { return { accountIdsText: '', accountCategoryId: undefined as number | undefined, customerGroupIds: [] as number[], customersPerGroup: 10, assignmentMode: 'queue', workerCount: 1, groupTitleTemplate: 'Group {seq}', groupAboutTemplate: '', messageRules: [defaultUserChatActiveMessageRule('Hello')], bulkRulesText: '', minSuccessfulInvites: 1, minDelaySeconds: 3, maxDelaySeconds: 8 } }
+function defaultGroupEngagementForm() { return { accountIdsText: '', accountCategoryId: undefined as number | undefined, customerGroupIds: [] as number[], customersPerGroup: 10, assignmentMode: 'queue', workerCount: 1, groupTitleTemplate: 'Group {seq}', groupAboutTemplate: '', messageRules: [defaultUserChatActiveMessageRule('Hello')], bulkRulesText: '', minSuccessfulInvites: 1, minDelaySeconds: 3, maxDelaySeconds: 8, forceRecontact: false } }
 function addGroupEngagementRule() { forms.groupEngagement.messageRules.push(defaultUserChatActiveMessageRule()) }
 function removeGroupEngagementRule(index: number) { if (forms.groupEngagement.messageRules.length <= 1) return; forms.groupEngagement.messageRules.splice(index, 1) }
 function appendGroupEngagementLineRules() {

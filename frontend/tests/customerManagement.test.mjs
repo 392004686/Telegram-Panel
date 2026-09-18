@@ -42,3 +42,10 @@ test('客户列表提供账号式筛选选择和批量管理', () => {
   assert.match(view, /customers-table/)
   assert.match(read('src/views/CustomerCategories.vue'), /编辑客户分类/)
 })
+
+test('客户列表提供批量修改执行状态', () => {
+  const view = read('src/views/Customers.vue')
+  assert.match(view, /批量修改执行状态/)
+  assert.match(view, /openBatchStatus/)
+  assert.match(view, /set_interaction/)
+})

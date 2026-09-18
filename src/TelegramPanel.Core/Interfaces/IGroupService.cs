@@ -37,6 +37,8 @@ public interface IGroupService
     /// </summary>
     Task<InviteResult> InviteUserAsync(int accountId, long groupId, string username);
 
+    Task<(int MemberCount, IReadOnlyList<long> MemberUserIds)> GetGroupMembershipSnapshotAsync(int accountId, long groupId, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// 批量邀请用户到群组。
     /// </summary>

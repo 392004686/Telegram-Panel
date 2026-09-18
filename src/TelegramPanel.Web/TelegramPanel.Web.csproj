@@ -18,6 +18,8 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.*" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.*" />
+    <PackageReference Include="SixLabors.Fonts" Version="2.*" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.*" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +35,10 @@
   <ItemGroup>
     <!-- Linux 一键更新 ZIP 必须携带入口脚本，供旧容器在新程序启动早期原子安装。 -->
     <Content Include="..\..\docker\entrypoint.sh" Link="self-update\entrypoint.sh">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="Assets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

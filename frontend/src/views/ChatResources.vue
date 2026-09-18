@@ -204,6 +204,68 @@
         <el-button type="primary" :loading="instantMessage.sending" @click="sendInstantMessage">立即发送</el-button>
       </el-form>
 
+      <template v-if="kind === 'group' && auth.canOperate">
+        <el-divider content-position="left">活跃消息规则（测试发送）</el-divider>
+        <el-alert class="mb-3" type="success" :closable="false" show-icon title="与建群邀请任务使用同一套规则添加器，方便单独验证文字、图片和素材图。" />
+        <div class="message-rule-section">
+          <div class="message-rule-toolbar">
+            <div><strong>消息规则</strong></div>
+            <el-button type="primary" plain size="small" @click="addEngagementRule()">添加规则</el-button>
+          </div>
+          <div v-for="(rule, index) in engagementRules" :key="rule.id" class="message-rule-card">
+            <div class="message-rule-card-head"><span>规则 {{ index + 1 }}</span><el-button link type="danger" :disabled="engagementRules.length <= 1" @click="removeEngagementRule(index)">删除</el-button></div>
+            <el-form label-position="top">
+              <el-form-item label="消息内容"><el-input v-model="rule.text" type="textarea" :rows="3" placeholder="可写多行，支持 {time} 和文字字典变量；留空时可只发图片。" /></el-form-item>
+              <el-form-item label="插入文字字典">
+                <el-select v-model="rule.insertDictionaryName" class="full" clearable placeholder="选择文字字典后点插入">
+                  <el-option v-for="name in textDictionaryNames" :key="name" :label="name" :value="name" />
+                </el-select>
+                <div class="form-hint no-offset compact" style="margin-top:8px"><el-button @click="insertEngagementDictionary(rule)">插入到消息内容</el-button></div>
+              </el-form-item>
+              <el-form-item label="素材底图">
+                <el-select v-model="rule.materialDictionaryName" class="full" placeholder="不使用素材底图">
+                  <el-option label="不使用素材底图" value="" />
+                  <el-option v-for="name in materialDictionaryNames" :key="name" :label="name" :value="name" />
+                </el-select>
+              </el-form-item>
+              <template v-if="rule.materialDictionaryName">
+                <el-form-item label="手机型号">
+                  <el-select v-model="rule.materialDevice" class="full">
+                    <el-option v-for="item in materialDevices" :key="item.id" :label="item.label" :value="item.id" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="生成时间">
+                  <el-radio-group v-model="rule.materialTimeMode">
+                    <el-radio-button value="now">发送时当前时间</el-radio-button>
+                    <el-radio-button value="fixed">固定时间</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item v-if="rule.materialTimeMode === 'fixed'" label="固定时刻">
+                  <el-input v-model="rule.materialTime" placeholder="15:59" class="full" />
+                </el-form-item>
+                <el-form-item label="图片倍率">
+                  <el-input-number v-model="rule.materialScale" :min="0.1" :max="4" :step="0.1" :precision="2" class="full" />
+                </el-form-item>
+                <el-form-item label="Android 通知">
+                  <el-select v-model="rule.materialNotification" class="full" :disabled="!isAndroidMaterialDevice(rule.materialDevice)">
+                    <el-option value="none" label="无" />
+                    <el-option value="telegram" label="Telegram 小飞机" />
+                  </el-select>
+                </el-form-item>
+              </template>
+              <el-form-item label="图片字典">
+                <el-select v-model="rule.imageDictionaryName" class="full" placeholder="不发送图片">
+                  <el-option label="不发送图片" value="" />
+                  <el-option v-for="name in imageDictionaryNames" :key="name" :label="name" :value="name" />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </div>
+          <el-button type="primary" :loading="engagementSending" @click="sendEngagementRules">按规则发送</el-button>
+        </div>
+      </template>
+
+
       <el-divider content-position="left">管理员</el-divider>
       <div class="toolbar compact mb-3">
         <el-button :icon="Refresh" :loading="detail.adminsLoading" :disabled="detail.adminKickLoadingGroupId !== null" @click="loadDetailAdmins">刷新</el-button>
@@ -578,7 +640,7 @@ import { ElMessage, ElMessageBox, type TableInstance, type UploadUserFile } from
 import { ArrowDown, Delete, Edit, Folder, MoreFilled, Plus, Refresh, Select, View } from '@element-plus/icons-vue'
 import { panelApi } from '@/api/panel'
 import ColumnVisibilityMenu from '@/components/ColumnVisibilityMenu.vue'
-import type { ChannelListItem, ChatAdmin, ChatMembershipAccount, GroupListItem, OperationAccount, SimpleCategory, TextPreset } from '@/api/types'
+import type { ChannelListItem, ChatAdmin, ChatMembershipAccount, DataDictionary, GroupListItem, OperationAccount, SimpleCategory, TextPreset } from '@/api/types'
 import { formatTime } from '@/utils/format'
 import { writeClipboardText } from '@/utils/clipboard'
 import { usePersistentColumnVisibility, type ColumnVisibilityOption } from '@/utils/columnVisibility'
@@ -657,6 +719,36 @@ const instantMessage = reactive({
   merge: true,
   sending: false,
 })
+const dictionaries = ref<DataDictionary[]>([])
+const engagementSending = ref(false)
+const engagementRules = ref([createEngagementRule()])
+const textDictionaryNames = computed(() => dictionaries.value.filter(x => x.isEnabled && x.type === 'text' && x.enabledItemCount > 0).map(x => x.name).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')))
+const imageDictionaryNames = computed(() => dictionaries.value.filter(x => x.isEnabled && x.type === 'image' && x.enabledItemCount > 0).map(x => x.name).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')))
+const materialDictionaryNames = computed(() => dictionaries.value.filter(x => x.isEnabled && x.type === 'material' && x.enabledItemCount > 0).map(x => x.name).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')))
+const materialDevices = [
+  { id: 'iphone-16-pro-max', label: 'iPhone 16 Pro Max' },
+  { id: 'iphone-16-pro', label: 'iPhone 16 Pro' },
+  { id: 'iphone-16-plus', label: 'iPhone 16 Plus' },
+  { id: 'iphone-16', label: 'iPhone 16' },
+  { id: 'iphone-15-pro-max', label: 'iPhone 15 Pro Max' },
+  { id: 'iphone-14-pro-max', label: 'iPhone 14 Pro Max' },
+  { id: 'pixel-7-pro', label: 'Pixel 7 Pro' },
+  { id: 'pixel-8-pro', label: 'Pixel 8 Pro' },
+  { id: 'galaxy-s24', label: 'Galaxy S24' },
+  { id: 'galaxy-a55', label: 'Galaxy A55' },
+]
+function isAndroidMaterialDevice(id?: string) { return (id || '').startsWith('pixel-') || (id || '').startsWith('galaxy-') }
+function createEngagementRule() {
+  return { id: `${Date.now()}-${Math.random()}`, text: 'Hello', imageDictionaryName: '', materialDictionaryName: '', materialDevice: 'iphone-16-pro-max', materialTimeMode: 'now', materialTime: '15:59', materialScale: 1, materialNotification: 'none', insertDictionaryName: '' }
+}
+function addEngagementRule() { engagementRules.value.push(createEngagementRule()) }
+function removeEngagementRule(index: number) { if (engagementRules.value.length <= 1) return; engagementRules.value.splice(index, 1) }
+function insertEngagementDictionary(rule: { text: string; insertDictionaryName?: string }) {
+  const name = (rule.insertDictionaryName || '').trim()
+  if (!name) { ElMessage.warning('请先选择文字字典'); return }
+  rule.text = (rule.text || '') + (rule.text && !rule.text.endsWith(' ') && !rule.text.endsWith('\n') ? ' ' : '') + `{${name}}`
+}
+function dictionaryToken(name: string) { return name.trim() ? `{${name.trim().replace(/[{}]/g, '')}}` : null }
 const systemAccounts = reactive({
   visible: false,
   accounts: [] as ChatMembershipAccount[],
@@ -971,6 +1063,7 @@ async function showDetails(row: Row) {
   instantMessage.accountId = filters.accountId > 0 ? filters.accountId : 0
   instantMessage.text = ''
   instantMessage.files = []
+  void loadEngagementDictionaries()
   detail.visible = true
   detail.loading = true
   try {
@@ -989,6 +1082,33 @@ async function showDetails(row: Row) {
     if (detail.row?.id === resourceId) detail.loading = false
   }
   await loadDetailAdmins(resourceId)
+}
+
+async function loadEngagementDictionaries() {
+  try { dictionaries.value = await panelApi.dictionaries() } catch { dictionaries.value = [] }
+}
+async function sendEngagementRules() {
+  if (!detail.row) return
+  const rules = engagementRules.value.map(rule => ({
+    text: rule.text,
+    image_dictionary_token: rule.imageDictionaryName ? dictionaryToken(rule.imageDictionaryName) : null,
+    material_dictionary_token: rule.materialDictionaryName ? dictionaryToken(rule.materialDictionaryName) : null,
+    material_device: rule.materialDevice || 'iphone-16-pro-max',
+    material_time_mode: rule.materialTimeMode || 'now',
+    material_time: rule.materialTime || '15:59',
+    material_scale: Number(rule.materialScale || 1),
+    material_notification: rule.materialNotification || 'none',
+  })).filter(rule => rule.text || rule.image_dictionary_token || rule.material_dictionary_token)
+  if (!rules.length) { ElMessage.warning('请至少填写一条规则'); return }
+  engagementSending.value = true
+  try {
+    const result = await panelApi.sendGroupEngagementRules(detail.row.id, { accountId: instantMessage.accountId, rules })
+    ElMessage.success(result.message || '规则发送成功')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error))
+  } finally {
+    engagementSending.value = false
+  }
 }
 
 async function sendInstantMessage() {
@@ -1762,4 +1882,12 @@ onMounted(async () => {
 .mt-2 {
   margin-top: 8px;
 }
+</style>
+
+<style scoped>
+.message-rule-section{margin-top:8px}
+.message-rule-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.message-rule-card{border:1px solid var(--el-border-color);border-radius:8px;padding:12px;margin-bottom:12px}
+.message-rule-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.full{width:100%}
 </style>

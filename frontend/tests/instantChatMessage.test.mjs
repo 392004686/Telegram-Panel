@@ -22,3 +22,10 @@ test('主布局品牌显示 Telegram X', () => {
   assert.match(layout, />Telegram X</)
   assert.doesNotMatch(layout, />Telegram Panel</)
 })
+
+test('群组详情提供活跃消息规则添加器', () => {
+  assert.match(resources, /活跃消息规则（测试发送）/)
+  assert.match(resources, /按规则发送/)
+  assert.match(resources, /sendGroupEngagementRules/)
+  assert.match(api, /\/groups\/\$\{id\}\/engagement-rules/)
+})

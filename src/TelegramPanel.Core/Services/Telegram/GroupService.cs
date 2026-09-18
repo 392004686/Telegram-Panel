@@ -610,10 +610,18 @@ public class GroupService : IGroupService
             return new InviteResult(username, false, "请输入用户名或手机号");
 
         var client = await GetOrCreateConnectedClientAsync(accountId);
+        User? targetUser = null;
+        string? display = null;
         try
         {
             var chat = await GetGroupChatAsync(accountId, client, groupId, CancellationToken.None);
-            var targetUser = await ResolveInviteUserAsync(client, username);
+            targetUser = await ResolveInviteUserAsync(client, username);
+            display = string.Join(" ", new[] { targetUser.first_name, targetUser.last_name }.Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+            var account = await _accountManagement.GetAccountAsync(accountId);
+            var selfId = account?.UserId ?? 0;
+            if (selfId <= 0) selfId = client.UserId;
+            if (selfId > 0 && targetUser.id == selfId)
+                return new InviteResult(username, false, "目标是当前执行账号自己", IsSelf: true, UserId: targetUser.id, DisplayName: display);
             var inputUser = new InputUser(targetUser.id, targetUser.access_hash);
 
             if (chat is Channel megaGroup)
@@ -624,13 +632,13 @@ public class GroupService : IGroupService
                 throw new InvalidOperationException("群组类型无效");
 
             _logger.LogInformation("Successfully invited @{Username} to group {GroupId}", username, groupId);
-            return new InviteResult(username, true);
+            return new InviteResult(username, true, UserId: targetUser.id, DisplayName: display);
         }
         catch (RpcException ex)
         {
             _logger.LogWarning("Failed to invite @{Username} to group {GroupId}: {Error}", username, groupId, ex.Message);
             if (ex.Message.Contains("USER_ALREADY_PARTICIPANT", StringComparison.OrdinalIgnoreCase))
-                return new InviteResult(username, true);
+                return new InviteResult(username, false, "已在群中，不计入新邀请", AlreadyInGroup: true, UserId: targetUser?.id, DisplayName: display);
             if (ex.Message.Contains("USER_BOT", StringComparison.OrdinalIgnoreCase))
                 return new InviteResult(username, false, "目标是 Bot：请用“设置管理员”把 Bot 加为管理员（不能用邀请成员）");
             if (ex.Message.Contains("RIGHT_FORBIDDEN", StringComparison.OrdinalIgnoreCase))
@@ -670,6 +678,44 @@ public class GroupService : IGroupService
         return resolved.User;
     }
 
+    public async Task<(int MemberCount, IReadOnlyList<long> MemberUserIds)> GetGroupMembershipSnapshotAsync(int accountId, long groupId, CancellationToken cancellationToken = default)
+    {
+        var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+        var chat = await GetGroupChatAsync(accountId, client, groupId, cancellationToken);
+        if (chat is Channel mega)
+        {
+            var memberCount = 0;
+            try
+            {
+                var full = await client.Channels_GetFullChannel(mega);
+                memberCount = full.full_chat.ParticipantsCount;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read full member count for group {GroupId}", groupId);
+            }
+            var ids = new List<long>();
+            try
+            {
+                var participants = await client.Channels_GetParticipants(mega, new ChannelParticipantsRecent(), 0, 200);
+                ids.AddRange(participants.users.Values.Select(x => x.id));
+                if (memberCount <= 0) memberCount = Math.Max(ids.Count, participants.count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to list members for group {GroupId}", groupId);
+            }
+            return (memberCount, ids);
+        }
+        if (chat is Chat basic)
+        {
+            var full = await client.Messages_GetFullChat(basic.id);
+            var ids = full.users.Values.Select(x => x.id).ToList();
+            var count = ids.Count;
+            return (count, ids);
+        }
+        return (0, Array.Empty<long>());
+    }
     public async Task<List<InviteResult>> BatchInviteUsersAsync(int accountId, long groupId, List<string> usernames, int delayMs = 2000)
     {
         var results = new List<InviteResult>();

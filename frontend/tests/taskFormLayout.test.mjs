@@ -15,3 +15,11 @@ test('新建任务弹窗隐藏横向溢出且长说明自动换行', () => {
   assert.match(tasks, /task-dialog \.el-dialog__body[\s\S]*?overflow-x: hidden/)
   assert.match(tasks, /task-dialog \.el-alert__title[\s\S]*?white-space: normal/)
 })
+
+test('建群邀请任务支持强制二次确认和自定义图片倍率', () => {
+  assert.match(form, /强制二次确认/)
+  assert.match(form, /forceRecontact/)
+  assert.match(form, /force_recontact/)
+  assert.match(form, /图片倍率/)
+  assert.match(form, /el-input-number v-model="rule.materialScale"/)
+})

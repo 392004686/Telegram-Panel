@@ -521,6 +521,8 @@ export const panelApi = {
     api.get<ChatAdmin[]>(`/groups/${id}/admins`, { timeout: 120_000 }).then((r) => r.data),
   sendGroupMessage: (id: number, form: FormData) =>
     api.post<InstantMessageResult>(`/groups/${id}/message`, form, { timeout: 300_000 }).then((r) => r.data),
+  sendGroupEngagementRules: (id: number, payload: { accountId: number; rules: Array<Record<string, unknown>> }) =>
+    api.post<InstantMessageResult>(`/groups/${id}/engagement-rules`, payload, { timeout: 300_000 }).then((r) => r.data),
   kickGroupAdmin: (id: number, userId: number) =>
     api.post<OperationResult>(`/groups/${id}/admins/${userId}/kick`, {}, { timeout: 120_000 }).then((r) => r.data),
   createGroup: (payload: {

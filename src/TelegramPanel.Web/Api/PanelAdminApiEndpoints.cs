@@ -217,6 +217,7 @@ public static class PanelAdminApiEndpoints
         ConfigureInstantMessageUploadLimits(
             secured.MapPost("/groups/{id:int}/message", SendGroupInstantMessageAsync)
                 .DisableAntiforgery());
+        secured.MapPost("/groups/{id:int}/engagement-rules", SendGroupEngagementRulesAsync);
         MapGroupAdminKickEndpoint(secured);
         secured.MapPost("/groups", CreateGroupAsync);
         secured.MapPut("/groups/{id:int}", UpdateGroupAsync).DisableAntiforgery();
@@ -3480,6 +3481,39 @@ public static class PanelAdminApiEndpoints
             channel.TelegramId.ToString(CultureInfo.InvariantCulture),
             accountTools,
             cancellationToken);
+    }
+
+    internal sealed record GroupEngagementRuleSendRequest(int AccountId, List<CustomerGroupEngagementTaskHandler.MessageRule>? Rules);
+
+    internal static async Task<IResult> SendGroupEngagementRulesAsync(
+        int id,
+        GroupEngagementRuleSendRequest request,
+        GroupManagementService groupManagement,
+        AccountTelegramToolsService accountTools,
+        EngagementMessageDispatchService dispatcher,
+        CancellationToken cancellationToken)
+    {
+        var group = await groupManagement.GetGroupAsync(id);
+        if (group == null)
+            return Results.NotFound(new OperationResultDto(false, "群组不存在"));
+        var accountId = request.AccountId > 0 ? request.AccountId : await groupManagement.ResolveExecuteAccountIdAsync(group);
+        if (accountId is not > 0)
+            return Results.BadRequest(new OperationResultDto(false, "当前群组暂无可用执行账号"));
+        var rules = (request.Rules ?? new List<CustomerGroupEngagementTaskHandler.MessageRule>())
+            .Where(x => x != null && (!string.IsNullOrWhiteSpace(x.Text) || !string.IsNullOrWhiteSpace(x.ImageDictionaryToken) || !string.IsNullOrWhiteSpace(x.MaterialDictionaryToken) || (x.ExtraTexts?.Count ?? 0) > 0 || (x.ExtraImages?.Count ?? 0) > 0))
+            .ToList();
+        if (rules.Count == 0)
+            return Results.BadRequest(new OperationResultDto(false, "请至少添加一条可发送的消息规则"));
+        var resolved = await accountTools.ResolveChatTargetAsync(accountId.Value, group.TelegramId.ToString(CultureInfo.InvariantCulture), cancellationToken);
+        if (!resolved.Success || resolved.Target == null)
+            return Results.BadRequest(new InstantMessageResultDto(false, resolved.Error ?? "执行账号无法访问目标", null));
+        var index = 0;
+        foreach (var rule in rules)
+        {
+            index++;
+            await dispatcher.SendRuleAsync(accountId.Value, resolved.Target, rule, "规则" + index, null, cancellationToken);
+        }
+        return Results.Ok(new InstantMessageResultDto(true, "规则发送成功", null));
     }
 
     private static async Task<IResult> SendGroupInstantMessageAsync(

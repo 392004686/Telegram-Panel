@@ -224,7 +224,12 @@ public sealed class DataDictionaryService
         await _dictionaryRepository.DeleteAsync(entity);
     }
 
+    public sealed record DictionaryTextPick(string Value, string DictionaryName, int Index, int Total, string Mode);
+
     public async Task<string> ResolveTextValueAsync(string name, CancellationToken cancellationToken = default)
+        => (await ResolveTextValueDetailedAsync(name, cancellationToken)).Value;
+
+    public async Task<DictionaryTextPick> ResolveTextValueDetailedAsync(string name, CancellationToken cancellationToken = default)
     {
         var dictionary = await _dictionaryRepository.GetByNameAsync(NormalizeName(name), cancellationToken)
             ?? throw new InvalidOperationException($"字典不存在：{name}");
@@ -267,7 +272,7 @@ public sealed class DataDictionaryService
                 dictionary.NextIndex = (index + 1) % items.Count;
                 dictionary.UpdatedAt = DateTime.UtcNow;
                 await _dictionaryRepository.UpdateAsync(dictionary);
-                return picked;
+                return new DictionaryTextPick(picked, dictionary.Name, (index % items.Count) + 1, items.Count, "queue");
             }
             finally
             {
@@ -275,7 +280,8 @@ public sealed class DataDictionaryService
             }
         }
 
-        return items[Random.Shared.Next(items.Count)];
+        var randomIndex = Random.Shared.Next(items.Count);
+        return new DictionaryTextPick(items[randomIndex], dictionary.Name, randomIndex + 1, items.Count, "random");
     }
 
     public async Task<StoredImageAssetInfo> ResolveImageValueAsync(string name, CancellationToken cancellationToken = default)
