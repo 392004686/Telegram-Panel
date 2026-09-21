@@ -1085,12 +1085,30 @@ public class AccountTelegramToolsService
                     var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var chat = await ExecuteTelegramRequestAsync(
-                        accountId,
-                        "加入/订阅群组或频道",
-                        () => client.AnalyzeInviteLink(url, join: true),
-                        cancellationToken,
-                        resetClientOnTimeout: false);
+                    TL.Messages_ChatsBase chat;
+                    if (TryExtractPublicChatUsername(url, out var publicUsername))
+                    {
+                        // AnalyzeInviteLink only accepts invite links. Public t.me/<username>
+                        // must be resolved first and joined with channels.joinChannel.
+                        var resolved = await ExecuteTelegramRequestAsync(
+                            accountId, "解析公开群组/频道用户名",
+                            () => client.Contacts_ResolveUsername(publicUsername), cancellationToken,
+                            resetClientOnTimeout: false);
+                        if (resolved.peer is not TL.PeerChannel peer || !resolved.chats.TryGetValue(peer.channel_id, out var resolvedChat) || resolvedChat is not TL.Channel channel)
+                            return (false, "公开链接未解析为可加入的频道/群组", null);
+                        await ExecuteTelegramRequestAsync(
+                            accountId, "加入/订阅公开群组或频道",
+                            () => client.Channels_JoinChannel(new InputChannel(channel.id, channel.access_hash)), cancellationToken,
+                            resetClientOnTimeout: false);
+                        return (true, null, channel.title);
+                    }
+                    else
+                    {
+                        chat = await ExecuteTelegramRequestAsync(
+                            accountId, "加入/订阅群组或频道",
+                            () => client.AnalyzeInviteLink(url, join: true), cancellationToken,
+                            resetClientOnTimeout: false);
+                    }
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var title = chat switch
@@ -1151,12 +1169,28 @@ public class AccountTelegramToolsService
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // 解析目标（不加入）
-                    var chat = await ExecuteTelegramRequestAsync(
-                        accountId,
-                        "解析退出/退订目标",
-                        () => client.AnalyzeInviteLink(url, join: false),
-                        cancellationToken,
-                        resetClientOnTimeout: false);
+                    TL.Messages_ChatsBase chat;
+                    if (TryExtractPublicChatUsername(url, out var publicUsername))
+                    {
+                        var resolved = await ExecuteTelegramRequestAsync(
+                            accountId, "解析公开群组/频道用户名",
+                            () => client.Contacts_ResolveUsername(publicUsername), cancellationToken,
+                            resetClientOnTimeout: false);
+                        if (resolved.peer is not TL.PeerChannel peer || !resolved.chats.TryGetValue(peer.channel_id, out var resolvedChat) || resolvedChat is not TL.Channel channel)
+                            return (false, "公开链接未解析为可退出的频道/群组", null);
+                        await ExecuteTelegramRequestAsync(
+                            accountId, "退出/退订公开群组或频道",
+                            () => client.Channels_LeaveChannel(new InputChannel(channel.id, channel.access_hash)), cancellationToken,
+                            resetClientOnTimeout: false);
+                        return (true, null, channel.title);
+                    }
+                    else
+                    {
+                        chat = await ExecuteTelegramRequestAsync(
+                            accountId, "解析退出/退订目标",
+                            () => client.AnalyzeInviteLink(url, join: false), cancellationToken,
+                            resetClientOnTimeout: false);
+                    }
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var title = chat switch
@@ -2442,6 +2476,22 @@ public class AccountTelegramToolsService
             return $"https://t.me/{s}";
 
         return s;
+    }
+
+    private static bool TryExtractPublicChatUsername(string url, out string username)
+    {
+        username = string.Empty;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || !uri.Host.EndsWith("t.me", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var segment = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(segment) || segment.StartsWith("+", StringComparison.Ordinal)
+            || segment.Equals("joinchat", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(segment, "^[A-Za-z0-9_]{5,64}$"))
+            return false;
+        username = segment;
+        return true;
     }
 
     private static (string Username, string StartFromLink) NormalizeTelegramBotUsername(string input, bool assumeBotUsername = false)
