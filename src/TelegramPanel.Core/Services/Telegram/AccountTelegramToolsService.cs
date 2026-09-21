@@ -1085,7 +1085,6 @@ public class AccountTelegramToolsService
                     var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    TL.Messages_ChatsBase chat;
                     if (TryExtractPublicChatUsername(url, out var publicUsername))
                     {
                         // AnalyzeInviteLink only accepts invite links. Public t.me/<username>
@@ -1104,21 +1103,13 @@ public class AccountTelegramToolsService
                     }
                     else
                     {
-                        chat = await ExecuteTelegramRequestAsync(
+                        var chat = await ExecuteTelegramRequestAsync(
                             accountId, "加入/订阅群组或频道",
                             () => client.AnalyzeInviteLink(url, join: true), cancellationToken,
                             resetClientOnTimeout: false);
+                        var title = chat switch { TL.Channel c => c.title, TL.Chat c => c.title, _ => null };
+                        return (true, null, title);
                     }
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var title = chat switch
-                    {
-                        TL.Channel c => c.title,
-                        TL.Chat c => c.title,
-                        _ => null
-                    };
-
-                    return (true, null, title);
                 },
                 () => _clientPool.RemoveClientAsync(accountId),
                 cancellationToken,
@@ -1169,14 +1160,13 @@ public class AccountTelegramToolsService
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // 解析目标（不加入）
-                    TL.Messages_ChatsBase chat;
                     if (TryExtractPublicChatUsername(url, out var publicUsername))
                     {
                         var resolved = await ExecuteTelegramRequestAsync(
                             accountId, "解析公开群组/频道用户名",
                             () => client.Contacts_ResolveUsername(publicUsername), cancellationToken,
                             resetClientOnTimeout: false);
-                        if (resolved.peer is not TL.PeerChannel peer || !resolved.chats.TryGetValue(peer.channel_id, out var resolvedChat) || resolvedChat is not TL.Channel channel)
+                        if (resolved.peer is not TL.PeerChannel leavePeer || !resolved.chats.TryGetValue(leavePeer.channel_id, out var resolvedChat) || resolvedChat is not TL.Channel channel)
                             return (false, "公开链接未解析为可退出的频道/群组", null);
                         await ExecuteTelegramRequestAsync(
                             accountId, "退出/退订公开群组或频道",
@@ -1186,37 +1176,17 @@ public class AccountTelegramToolsService
                     }
                     else
                     {
-                        chat = await ExecuteTelegramRequestAsync(
+                        var chat = await ExecuteTelegramRequestAsync(
                             accountId, "解析退出/退订目标",
                             () => client.AnalyzeInviteLink(url, join: false), cancellationToken,
                             resetClientOnTimeout: false);
+                        var title = chat switch { TL.Channel c => c.title, TL.Chat c => c.title, _ => null };
+                        var peer = chat switch { TL.Channel c => c.ToInputPeer(), TL.Chat c => c.ToInputPeer(), _ => null };
+                        if (peer == null)
+                            return (false, "无法解析目标群组/频道", null);
+                        await ExecuteTelegramRequestAsync(accountId, "退出/退订群组或频道", () => client.LeaveChat(peer), cancellationToken, resetClientOnTimeout: false);
+                        return (true, null, title);
                     }
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var title = chat switch
-                    {
-                        TL.Channel c => c.title,
-                        TL.Chat c => c.title,
-                        _ => null
-                    };
-
-                    var peer = chat switch
-                    {
-                        TL.Channel c => c.ToInputPeer(),
-                        TL.Chat c => c.ToInputPeer(),
-                        _ => null
-                    };
-
-                    if (peer == null)
-                        return (false, "无法解析目标群组/频道", null);
-
-                    await ExecuteTelegramRequestAsync(
-                        accountId,
-                        "退出/退订群组或频道",
-                        () => client.LeaveChat(peer),
-                        cancellationToken,
-                        resetClientOnTimeout: false);
-                    return (true, null, title);
                 },
                 () => _clientPool.RemoveClientAsync(accountId),
                 cancellationToken,
