@@ -12,7 +12,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.6", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.7", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -44,7 +44,7 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
 <section class="card history"><h2>历史运行</h2><div id="history">加载中…</div></section></main>
 <script>
 const base='/api/panel/extensions/command-console'; const out=document.getElementById('output');
-const EVENT={'run.started':'命令开始','command.parsed':'命令解析','step.started':'步骤开始','step.succeeded':'步骤成功','step.failed':'步骤失败','run.succeeded':'命令成功','run.failed':'命令失败'};
+const EVENT={'run.started':'命令开始','command.parsed':'命令解析','run.context':'运行上下文','step.started':'步骤开始','step.succeeded':'步骤成功','step.failed':'步骤失败','run.succeeded':'命令成功','run.failed':'命令失败'};
 const ACTION={'group.list':'群组列表','group.get':'群组详情','group.invite':'邀请用户进群','account.sync':'账号同步','chat.join':'加入群组或频道','proxy.list':'代理列表'};
 const FIELD={id:'ID',telegramId:'Telegram ID',accessHash:'访问哈希',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',creatorAccountId:'创建者账号',isCreator:'是否创建者',isAdmin:'是否管理员',createdAt:'创建时间',syncedAt:'同步时间',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyHost:'代理地址',proxyPort:'代理端口',proxyStatus:'代理状态',moduleVersion:'模块版本',account:'账号',refresh:'刷新'};
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); const fmt=x=>new Date(x).toLocaleString('zh-CN',{hour12:false});
@@ -53,7 +53,7 @@ function value(v,k){if(v===null||v===undefined||v==='')return '';if(k==='link'&&
 function record(o){return '<div class="result"><div class="kv">'+Object.entries(o||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>'<b>'+esc(FIELD[k]||k)+'</b><span>'+value(v,k)+'</span>').join('')+'</div></div>'}
 function dataView(d){if(Array.isArray(d)){if(!d.length)return '<p>结果（0 条）</p>';if(mode==='card'||(mode==='auto'&&d.length===1))return '<p>结果（'+d.length+' 条）</p>'+d.map((x,i)=>'<div class="result"><b>#'+(i+1)+'</b>'+record(x)+'</div>').join('');const keys=[...new Set(d.flatMap(x=>Object.keys(x||{})))].filter(k=>d.some(x=>x?.[k]!==null&&x?.[k]!==undefined&&x?.[k]!==''));return '<p>结果（'+d.length+' 条）</p><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'+keys.map(k=>'<th style="text-align:left;padding:10px;border-bottom:1px solid #dbe4ef">'+esc(FIELD[k]||k)+'</th>').join('')+'</tr></thead><tbody>'+d.map(x=>'<tr>'+keys.map(k=>'<td style="padding:10px;border-bottom:1px solid #eef2f7">'+value(x?.[k],k)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>'}return record(d)}
 function textData(d){if(!d)return '';if(Array.isArray(d)){return d.map((x,i)=>'├─ #'+(i+1)+'\n'+Object.entries(x||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>'│  '+(FIELD[k]||k)+'：'+(typeof v==='boolean'?(v?'是':'否'):v)).join('\n')).join('\n')}return Object.entries(d).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>(FIELD[k]||k)+'：'+(typeof v==='boolean'?(v?'是':'否'):v)).join('\n')}
-function render(events){window.lastEvents=events;const p=events.find(x=>x.type==='command.parsed'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let s='┌────────────────────────────────────────────\n';s+='│ '+(ACTION[p?.data?.action]||p?.data?.action||'命令')+'\n';s+='├────────────────────────────────────────────\n';s+='│ ▶ 命令开始　'+fmt(events[0]?.timeUtc)+'\n';s+='│ · 命令解析　'+(ACTION[p?.data?.action]||p?.data?.action||'')+'　(account='+(p?.data?.args?.account||'')+')\n';for(const e of events.filter(x=>x.type==='step.started'||x.type==='step.succeeded'||x.type==='step.failed')){s+='│ '+(e.type==='step.failed'?'✖':e.type==='step.succeeded'?'✔':'▶')+' '+(EVENT[e.type]||e.type)+'　'+fmt(e.timeUtc)+(e.message?'　'+e.message:'')+'\n';if(e.type==='step.succeeded'&&e.data)s+='│ 结果：\n'+textData(e.data)+'\n'}s+='│ '+(d?.type==='run.succeeded'?'✔ 命令成功':'✖ 命令失败')+'\n└────────────────────────────────────────────';out.innerHTML='<div class="result-box">'+esc(s)+'</div><details class="raw"><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>'}
+function render(events){window.lastEvents=events;const p=events.find(x=>x.type==='command.parsed'),c=events.find(x=>x.type==='run.context'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let s='┌────────────────────────────────────────────\n';s+='│ '+(ACTION[p?.data?.action]||p?.data?.action||'命令')+'\n';s+='├────────────────────────────────────────────\n';s+='│ ▶ 命令开始　'+fmt(events[0]?.timeUtc)+'\n';s+='│ · 命令解析　'+(ACTION[p?.data?.action]||p?.data?.action||'')+'　(account='+(p?.data?.args?.account||'')+')\n';s+='│ · 网络出口　'+(c?.data?.proxySummary||'未取得')+'\n';for(const e of events.filter(x=>x.type==='step.started'||x.type==='step.succeeded'||x.type==='step.failed')){s+='│ '+(e.type==='step.failed'?'✖':e.type==='step.succeeded'?'✔':'▶')+' '+(EVENT[e.type]||e.type)+'　'+fmt(e.timeUtc)+(e.message?'　'+e.message:'')+'\n';if(e.type==='step.succeeded'&&e.data)s+='│ 结果：\n'+textData(e.data)+'\n'}s+='│ '+(d?.type==='run.succeeded'?'✔ 命令成功':'✖ 命令失败')+'\n└────────────────────────────────────────────';out.innerHTML='<div class="result-box">'+esc(s)+'</div><details class="raw"><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>'}
 async function openRun(id){render(await (await fetch(base+'/runs/'+id)).json())}
 async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<button data-id="'+esc(id)+'">'+esc(id)+'</button>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))} 
 document.getElementById('run').onclick=async()=>{const command=document.getElementById('command').value.trim();if(!command)return;out.textContent='执行中…';const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();render(x.events||[]);load()};load();
@@ -74,9 +74,21 @@ internal static class CommandRunner
         try
         {
             var command = CommandParser.Parse(raw);
-            Add("run.started", new { moduleVersion = "1.0.6" });
+            Add("run.started", new { moduleVersion = "1.0.7" });
             Add("command.parsed", command);
             var account = command.RequireInt("account");
+            var route = await services.GetRequiredService<IAccountProxyResolver>().ResolveAsync(account, ct);
+            Add("run.context", route.Proxy is null
+                ? new { accountId = account, proxyMode = "direct", proxySummary = "直连" }
+                : new
+                {
+                    accountId = account,
+                    proxyMode = "proxy",
+                    proxyId = route.Proxy.ProxyId,
+                    proxyType = route.Proxy.Kind,
+                    proxyProtocol = route.Proxy.Protocol,
+                    proxySummary = $"#{route.Proxy.ProxyId} {route.Proxy.Name} {route.Proxy.Protocol}://{route.Proxy.Host}:{route.Proxy.Port}"
+                });
             Add("step.started", new { step = command.Action });
             object result = command.Action switch
             {

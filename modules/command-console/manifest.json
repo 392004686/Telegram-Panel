@@ -1,7 +1,7 @@
 {
   "id": "command-console",
   "name": "命令控制台",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "host": { "min": "1.31.76" },
   "entry": { "assembly": "TelegramPanel.CommandConsole.dll", "type": "TelegramPanel.CommandConsole.CommandConsoleModule" }
 }
