@@ -12,7 +12,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.4", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.5", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -39,14 +39,14 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>命令控制台</title>
 <style>body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f6fb;color:#172033;margin:0;padding:28px}main{max-width:1120px;margin:auto}textarea{width:100%;min-height:96px;padding:12px;border:1px solid #d7dfeb;border-radius:8px;font:14px monospace;box-sizing:border-box}button,select{background:#fff;color:#245ea8;border:1px solid #cbd9ea;border-radius:7px;padding:8px 14px;cursor:pointer;margin:4px}button.primary{background:#1677ff;color:#fff;border-color:#1677ff}.card{background:#fff;padding:20px;border-radius:14px;box-shadow:0 2px 12px #dfe6f0;margin-bottom:18px}.muted{color:#667085}.history button{background:#f4f8ff;color:#1459b8;margin:4px;padding:9px 12px;text-align:left}.event{background:#fff;border:1px solid #e3eaf3;border-left:4px solid #8eabcf;padding:11px 14px;margin:9px 0;border-radius:8px}.event.ok{border-left-color:#22a06b}.event.fail{border-left-color:#d14343}.result{background:#fbfdff;border:1px solid #e0e7f0;border-radius:9px;padding:14px;margin:10px 0}.kv{display:grid;grid-template-columns:150px 1fr;gap:8px}.raw{margin-top:14px;border-top:1px solid #e4eaf2;padding-top:10px}.raw pre{white-space:pre-wrap;max-height:420px;overflow:auto;background:#172033;color:#e8f0ff;padding:14px;border-radius:8px}</style></head>
 <body><main><h1>命令控制台</h1><p class="muted">执行宿主 Telegram 操作并查看原始步骤日志。每行一条命令，支持固定白名单命令。</p>
-<section class="card"><textarea id="command" placeholder="例如：group.list account=2 refresh=true"></textarea><br><button id="run">执行命令</button></section>
+<section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>中文操作<select id="action"><option value="group.list">群组列表</option><option value="group.get">群组详情</option><option value="account.sync">账号同步</option><option value="chat.join">加入群组或频道</option><option value="group.invite">邀请用户进群</option><option value="proxy.list">代理列表</option></select></label><label>账号<input id="account" value="2" style="width:70px;padding:8px;border:1px solid #d7dfeb;border-radius:7px"></label><label id="targetWrap">目标<input id="target" placeholder="群组 ID / 链接 / 用户名" style="width:260px;padding:8px;border:1px solid #d7dfeb;border-radius:7px"></label><button id="make">生成命令</button></div><textarea id="command" placeholder="生成后也可以手动编辑命令"></textarea><br><button class="primary" id="run">执行命令</button></section>
 <section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>运行结果</h2><label>展示：<select id="mode"><option value="auto">自动</option><option value="timeline">时间线</option><option value="table">表格</option><option value="card">卡片</option></select></label></div><div id="output" class="result">等待执行…</div></section>
 <section class="card history"><h2>历史运行</h2><div id="history">加载中…</div></section></main>
 <script>
 const base='/api/panel/extensions/command-console'; const out=document.getElementById('output');
 const EVENT={'run.started':'命令开始','command.parsed':'命令解析','step.started':'步骤开始','step.succeeded':'步骤成功','step.failed':'步骤失败','run.succeeded':'命令成功','run.failed':'命令失败'};
 const ACTION={'group.list':'群组列表','group.get':'群组详情','group.invite':'邀请用户进群','account.sync':'账号同步','chat.join':'加入群组或频道','proxy.list':'代理列表'};
-const FIELD={id:'ID',telegramId:'Telegram ID',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyStatus:'代理状态',moduleVersion:'模块版本',account:'账号',refresh:'刷新'};
+const FIELD={id:'ID',telegramId:'Telegram ID',accessHash:'访问哈希',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',creatorAccountId:'创建者账号',isCreator:'是否创建者',isAdmin:'是否管理员',createdAt:'创建时间',syncedAt:'同步时间',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyHost:'代理地址',proxyPort:'代理端口',proxyStatus:'代理状态',moduleVersion:'模块版本',account:'账号',refresh:'刷新'};
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); const fmt=x=>new Date(x).toLocaleString('zh-CN',{hour12:false});
 let mode='auto'; document.getElementById('mode').onchange=e=>{mode=e.target.value;if(window.lastEvents)render(window.lastEvents)};
 function value(v,k){if(v===null||v===undefined||v==='')return '';if(k==='link'&&String(v).startsWith('http'))return '<a href="'+esc(v)+'" target="_blank">'+esc(v)+'</a>';if(typeof v==='boolean')return v?'是':'否';if(typeof v==='object')return esc(JSON.stringify(v));return esc(v)}
@@ -56,6 +56,7 @@ function render(events){window.lastEvents=events;const p=events.find(x=>x.type==
 async function openRun(id){render(await (await fetch(base+'/runs/'+id)).json())}
 async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<button data-id="'+esc(id)+'">'+esc(id)+'</button>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))} 
 document.getElementById('run').onclick=async()=>{const command=document.getElementById('command').value.trim();if(!command)return;out.textContent='执行中…';const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();render(x.events||[]);load()};load();
+document.getElementById('make').onclick=()=>{const a=document.getElementById('action').value,n=document.getElementById('account').value.trim(),t=document.getElementById('target').value.trim();const q={"group.list":`group.list account=${n} refresh=true`,"group.get":`group.get account=${n} group=${t}`,"account.sync":`account.sync account=${n}`,"chat.join":`chat.join account=${n} target=${t}`,"group.invite":`group.invite account=${n} group=${t} usernames="@username" delay=2000`,"proxy.list":`proxy.list account=${n}`};document.getElementById('command').value=q[a]||''};
 </script></body></html>
 """;
     public sealed record RunRequest(string Command);
@@ -72,7 +73,7 @@ internal static class CommandRunner
         try
         {
             var command = CommandParser.Parse(raw);
-            Add("run.started", new { moduleVersion = "1.0.4" });
+            Add("run.started", new { moduleVersion = "1.0.5" });
             Add("command.parsed", command);
             var account = command.RequireInt("account");
             Add("step.started", new { step = command.Action });
