@@ -398,3 +398,12 @@
 - 正在修改 `UserJoinSubscribeTaskHandler`：成功/失败/异常写入 `BatchTaskLogs`；加群成功后调用 `DataSyncService.SyncAccountAsync`，使右键群组列表能看到新加入的群。
 - 右键群组内“单独加入邀请”尚未开始实现；后续应复用现有 `GroupService.InviteUserAsync` 和 `GroupInviteUsersTaskHandler`，前端只增加轻量输入与结果明细，不预先以本地权限判断拦截，实际 Telegram 返回作为准确信息。
 - 本轮改动完成后先用 Docker 构建验证，再统一提交和推送一次。
+
+### 命令控制台模块设计
+
+- 已确认当前插件为同进程动态程序集：模块包升级不需要重建主镜像，但安装、启用或切换版本通常仍需重启宿主服务，不能承诺安全的单 DLL 热卸载。
+- 设计文档：`docs/developer/command-console-module-design.md`。
+- 第一版使用命令驱动，UI 只提交命令和显示运行历史。
+- 每次运行必须输出 `run_id`、原始/标准化命令、账号、代理摘要、ApiId、目标解析、逐步耗时、Telegram 返回值、RPC code、RPC 原文和最终摘要。
+- 事件同时写控制台、模块 JSONL 历史和任务摘要；失败不得用中文摘要覆盖原始异常。
+- `group.invite` 不使用本地权限快照预先拦截，逐个执行并记录 Telegram 的真实成功/失败结果。

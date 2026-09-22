@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TelegramPanel.CommandConsole</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/TelegramPanel.Modules.Abstractions/TelegramPanel.Modules.Abstractions.csproj" />
+    <ProjectReference Include="../../src/TelegramPanel.Core/TelegramPanel.Core.csproj" />
+    <ProjectReference Include="../../src/TelegramPanel.Web/TelegramPanel.Web.csproj" ReferenceOutputAssembly="true" />
+  </ItemGroup>
+</Project>
