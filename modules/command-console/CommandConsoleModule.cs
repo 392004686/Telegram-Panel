@@ -12,7 +12,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.0", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.1", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));

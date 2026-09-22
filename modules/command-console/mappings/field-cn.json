@@ -1,0 +1,23 @@
+{
+  "id": "ID",
+  "telegramId": "Telegram ID",
+  "accessHash": "访问哈希",
+  "title": "名称",
+  "username": "用户名",
+  "phone": "手机号",
+  "memberCount": "成员数",
+  "about": "简介",
+  "creatorAccountId": "创建者账号",
+  "isCreator": "是否创建者",
+  "isAdmin": "是否管理员",
+  "createdAt": "创建时间",
+  "syncedAt": "同步时间",
+  "isPublic": "是否公开",
+  "link": "链接",
+  "proxyId": "代理 ID",
+  "proxyMode": "代理模式",
+  "proxyType": "代理类型",
+  "proxyHost": "代理地址",
+  "proxyPort": "代理端口",
+  "proxyStatus": "代理状态"
+}

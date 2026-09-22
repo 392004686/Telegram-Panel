@@ -1,0 +1,422 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\modules\\command-console\\TelegramPanel.CommandConsole.csproj": {}
+  },
+  "projects": {
+    "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\modules\\command-console\\TelegramPanel.CommandConsole.csproj": {
+      "version": "1.31.76",
+      "restore": {
+        "projectUniqueName": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\modules\\command-console\\TelegramPanel.CommandConsole.csproj",
+        "projectName": "TelegramPanel.CommandConsole",
+        "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\modules\\command-console\\TelegramPanel.CommandConsole.csproj",
+        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+        "outputPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\modules\\command-console\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj"
+              },
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj"
+              },
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Web\\TelegramPanel.Web.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Web\\TelegramPanel.Web.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj": {
+      "version": "1.31.76",
+      "restore": {
+        "projectUniqueName": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj",
+        "projectName": "TelegramPanel.Core",
+        "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj",
+        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+        "outputPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.AspNetCore.Components.Web": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "Microsoft.Data.Sqlite": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "Microsoft.Extensions.Configuration.Abstractions": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "Microsoft.Extensions.DependencyInjection.Abstractions": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "Microsoft.Extensions.Logging.Abstractions": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "SixLabors.ImageSharp": {
+              "target": "Package",
+              "version": "[3.*, )"
+            },
+            "WTelegramClient": {
+              "target": "Package",
+              "version": "[4.4.8, )"
+            },
+            "libphonenumber-csharp": {
+              "target": "Package",
+              "version": "[9.0.21, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj": {
+      "version": "1.31.76",
+      "restore": {
+        "projectUniqueName": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj",
+        "projectName": "TelegramPanel.Data",
+        "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj",
+        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+        "outputPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "Microsoft.EntityFrameworkCore.Sqlite": {
+              "target": "Package",
+              "version": "[8.*, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj": {
+      "version": "1.31.76",
+      "restore": {
+        "projectUniqueName": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj",
+        "projectName": "TelegramPanel.Modules.Abstractions",
+        "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj",
+        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+        "outputPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.Extensions.DependencyInjection.Abstractions": {
+              "target": "Package",
+              "version": "[8.*, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Web\\TelegramPanel.Web.csproj": {
+      "version": "1.31.76",
+      "restore": {
+        "projectUniqueName": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Web\\TelegramPanel.Web.csproj",
+        "projectName": "TelegramPanel.Web",
+        "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Web\\TelegramPanel.Web.csproj",
+        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+        "outputPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Web\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Core\\TelegramPanel.Core.csproj"
+              },
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Data\\TelegramPanel.Data.csproj"
+              },
+              "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj": {
+                "projectPath": "E:\\Desktop\\chongzhi\\telegram_tool\\work\\Telegram-Panel\\src\\TelegramPanel.Modules.Abstractions\\TelegramPanel.Modules.Abstractions.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Hangfire.AspNetCore": {
+              "target": "Package",
+              "version": "[1.8.*, )"
+            },
+            "Hangfire.Core": {
+              "target": "Package",
+              "version": "[1.8.*, )"
+            },
+            "Hangfire.InMemory": {
+              "target": "Package",
+              "version": "[1.0.*, )"
+            },
+            "MudBlazor": {
+              "target": "Package",
+              "version": "[7.*, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "Serilog.AspNetCore": {
+              "target": "Package",
+              "version": "[8.*, )"
+            },
+            "SixLabors.Fonts": {
+              "target": "Package",
+              "version": "[2.*, )"
+            },
+            "SixLabors.ImageSharp": {
+              "target": "Package",
+              "version": "[3.*, )"
+            },
+            "SixLabors.ImageSharp.Drawing": {
+              "target": "Package",
+              "version": "[2.*, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

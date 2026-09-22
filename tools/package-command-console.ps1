@@ -18,6 +18,7 @@ Get-ChildItem $lib -Force |
   ) } |
   Remove-Item -Recurse -Force
 Copy-Item (Join-Path $root "modules/command-console/manifest.json") $stage
+Copy-Item (Join-Path $root "modules/command-console/mappings") (Join-Path $stage "mappings") -Recurse -Force
 $out = Join-Path $root "artifacts/modules/command-console.tpm"
 if (Test-Path $out) { Remove-Item $out -Force }
 $zip = Join-Path $root "artifacts/modules/command-console.zip"

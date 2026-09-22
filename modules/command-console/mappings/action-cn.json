@@ -1,0 +1,14 @@
+{
+  "account.list": "账号列表",
+  "account.get": "账号详情",
+  "account.sync": "账号同步",
+  "group.list": "群组列表",
+  "group.get": "群组详情",
+  "group.invite": "邀请用户进群",
+  "group.leave": "退出群组",
+  "channel.list": "频道列表",
+  "channel.get": "频道详情",
+  "proxy.list": "代理列表",
+  "proxy.get": "代理详情",
+  "chat.join": "加入群组或频道"
+}
