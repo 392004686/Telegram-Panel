@@ -12,7 +12,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.1", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.2", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -44,8 +44,14 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
 <section class="card history"><h2>历史运行</h2><div id="history">加载中…</div></section></main>
 <script>
 const base='/api/panel/extensions/command-console'; const out=document.getElementById('output');
-async function load(){const r=await fetch(base+'/runs');const ids=await r.json();document.getElementById('history').innerHTML=ids.length?ids.map(id=>'<button data-id="'+id+'">'+id+'</button>').join(''):'暂无记录';document.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{out.textContent=JSON.stringify(await (await fetch(base+'/runs/'+b.dataset.id)).json(),null,2)})}
-document.getElementById('run').onclick=async()=>{const command=document.getElementById('command').value.trim();if(!command)return;out.textContent='执行中…';const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});out.textContent=JSON.stringify(await r.json(),null,2);load()};load();
+const EVENT={'run.started':'命令开始','command.parsed':'命令解析','step.started':'步骤开始','step.succeeded':'步骤成功','step.failed':'步骤失败','run.succeeded':'命令成功','run.failed':'命令失败'};
+const ACTION={'group.list':'群组列表','group.get':'群组详情','group.invite':'邀请用户进群','account.sync':'账号同步','chat.join':'加入群组或频道','proxy.list':'代理列表'};
+const FIELD={id:'ID',telegramId:'Telegram ID',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyStatus:'代理状态'};
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); const fmt=x=>new Date(x).toLocaleString('zh-CN',{hour12:false});
+function render(events){const p=events.find(x=>x.type==='command.parsed'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let h='<h3>'+esc(ACTION[p?.data?.action]||p?.data?.action||'命令')+'</h3>';h+='<p>运行 ID：'+esc(events[0]?.runId)+'　时间：'+fmt(events[0]?.timeUtc)+'　状态：'+(d?.type==='run.succeeded'?'成功':'失败')+'</p>';h+=events.map(e=>'<div style="padding:8px;border-left:3px solid '+(e.type.includes('failed')?'#d33':'#248')+'"><b>'+esc(EVENT[e.type]||e.type)+'</b> <small>'+fmt(e.timeUtc)+'</small>'+(e.message?'<div>'+esc(e.message)+'</div>':'')+(e.data?'<pre>'+esc(JSON.stringify(e.data,null,2))+'</pre>':'')+'</div>').join('');h+='<details><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>';out.innerHTML=h}
+async function openRun(id){render(await (await fetch(base+'/runs/'+id)).json())}
+async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<button data-id="'+esc(id)+'">'+esc(id)+'</button>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))} 
+document.getElementById('run').onclick=async()=>{const command=document.getElementById('command').value.trim();if(!command)return;out.textContent='执行中…';const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();render(x.events||[]);load()};load();
 </script></body></html>
 """;
     public sealed record RunRequest(string Command);
