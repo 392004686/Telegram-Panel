@@ -14,7 +14,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.9", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.10", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -30,6 +30,8 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
         });
         group.MapGet("/runs", (CommandConsoleStore store) => Results.Ok(store.List()));
         group.MapGet("/runs/{runId}", (string runId, CommandConsoleStore store) => store.Read(runId) is { } events ? Results.Ok(events) : Results.NotFound());
+        group.MapDelete("/runs", (CommandConsoleStore store) => { store.Clear(); return Results.Ok(); });
+        group.MapDelete("/runs/{runId}", (string runId, CommandConsoleStore store) => store.Delete(runId) ? Results.Ok() : Results.NotFound());
     }
     public IEnumerable<ModuleNavItem> GetNavItems(ModuleHostContext context)
     {
@@ -43,7 +45,7 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
 <body><main><h1>命令控制台</h1><p class="muted">执行宿主 Telegram 操作并查看原始步骤日志。每行一条命令，支持固定白名单命令。</p>
 <section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>能力分类<select id="category"><option value="account">账号</option><option value="group">群组</option><option value="proxy">代理</option><option value="chat">聊天</option></select></label><label>操作<select id="action"></select></label><div id="params"></div><button id="make">加入流程</button></div><p class="muted">可连续添加多个动作，下面每行按顺序执行。</p><textarea id="command" placeholder="例如：group.list account=2 refresh=true"></textarea><br><button class="primary" id="run">执行流程</button></section>
 <section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>运行结果</h2><label>展示：<select id="mode"><option value="auto">自动</option><option value="timeline">时间线</option><option value="table">表格</option><option value="card">卡片</option></select></label></div><div id="output" class="result">等待执行…</div></section>
-<section class="card history"><h2>历史运行</h2><div id="history">加载中…</div></section></main>
+<section class="card history"><div style="display:flex;justify-content:space-between;align-items:center"><h2>历史运行</h2><div><button id="selectAll">全选</button><button id="clearSelected">清除所选</button><button id="clearAll">清空全部</button></div></div><div id="history">加载中…</div></section></main>
 <script>
 const base='/api/panel/extensions/command-console'; const out=document.getElementById('output');
 const CATALOG={account:[['account.list','账号列表',[]],['account.get','账号详情',[['account','账号','2']]],['account.sync','账号同步',[['account','账号','2']]]],group:[['group.list','群组列表',[['account','账号','2'],['refresh','刷新','true']]],['group.get','群组详情',[['account','账号','2'],['group','群组 ID','']]],['group.invite','邀请用户进群',[['account','账号','2'],['group','群组 ID',''],['usernames','用户名列表','@username'],['delay','间隔毫秒','2000']]]],proxy:[['proxy.list','代理列表',[]]],chat:[['chat.join','加入群组或频道',[['account','账号','2'],['target','目标链接','']]]]};
@@ -61,7 +63,10 @@ function dataView(d){if(Array.isArray(d)){if(!d.length)return '<p>结果（0 条
 function textData(d){if(!d)return '';if(Array.isArray(d)){return d.map((x,i)=>'├─ #'+(i+1)+'\n'+Object.entries(x||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>'│  '+(FIELD[k]||k)+'：'+(typeof v==='boolean'?(v?'是':'否'):v)).join('\n')).join('\n')}return Object.entries(d).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>(FIELD[k]||k)+'：'+(typeof v==='boolean'?(v?'是':'否'):v)).join('\n')}
 function render(events){window.lastEvents=events;const p=events.find(x=>x.type==='command.parsed'),c=events.find(x=>x.type==='run.context'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let s='┌────────────────────────────────────────────\n';s+='│ '+(ACTION[p?.data?.action]||p?.data?.action||'命令')+'\n';s+='├────────────────────────────────────────────\n';s+='│ ▶ 命令开始　'+fmt(events[0]?.timeUtc)+'\n';s+='│ · 命令解析　'+(ACTION[p?.data?.action]||p?.data?.action||'')+'　(account='+(p?.data?.args?.account||'')+')\n';s+='│ · 网络出口　'+(c?.data?.proxySummary||'未取得')+'\n';for(const e of events.filter(x=>x.type==='step.started'||x.type==='step.succeeded'||x.type==='step.failed')){s+='│ '+(e.type==='step.failed'?'✖':e.type==='step.succeeded'?'✔':'▶')+' '+(EVENT[e.type]||e.type)+'　'+fmt(e.timeUtc)+(e.message?'　'+e.message:'')+'\n';if(e.type==='step.succeeded'&&e.data)s+='│ 结果：\n'+textData(e.data)+'\n'}s+='│ '+(d?.type==='run.succeeded'?'✔ 命令成功':'✖ 命令失败')+'\n└────────────────────────────────────────────';out.innerHTML='<div class="result-box">'+esc(s)+'</div><details class="raw"><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>'}
 async function openRun(id){render(await (await fetch(base+'/runs/'+id)).json())}
-async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<button data-id="'+esc(id)+'">'+esc(id)+'</button>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))} 
+async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<div><input type="checkbox" data-check="'+esc(id)+'"><button data-id="'+esc(id)+'">'+esc(id)+'</button></div>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))}
+document.getElementById('selectAll').onclick=()=>document.querySelectorAll('[data-check]').forEach(x=>x.checked=true);
+document.getElementById('clearSelected').onclick=async()=>{for(const x of document.querySelectorAll('[data-check]:checked'))await fetch(base+'/runs/'+encodeURIComponent(x.dataset.check),{method:'DELETE'});load()};
+document.getElementById('clearAll').onclick=async()=>{if(confirm('确认清空全部运行记录？')){await fetch(base+'/runs',{method:'DELETE'});load();out.textContent='已清空运行记录'}};
 document.getElementById('run').onclick=async()=>{const commands=document.getElementById('command').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(!commands.length)return;out.textContent='执行流程中…';let all=[];for(const command of commands){const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();all=all.concat(x.events||[])}render(all);load()};load();
 document.getElementById('make').onclick=()=>{const a=document.getElementById('action').value;const args=[...document.querySelectorAll('[data-param]')].map(x=>x.value?x.dataset.param+'='+((x.dataset.param==='usernames'?'"':'')+x.value+(x.dataset.param==='usernames'?'"':'')):null).filter(Boolean);const area=document.getElementById('command');area.value+=(area.value?'\n':'')+a+(args.length?' '+args.join(' '):'')};
 </script></body></html>
@@ -80,14 +85,10 @@ internal static class CommandRunner
         try
         {
             var command = CommandParser.Parse(raw);
-            Add("run.started", new { moduleVersion = "1.0.9" });
+            Add("run.started", new { moduleVersion = "1.0.10" });
             Add("command.parsed", command);
             var account = command.RequireInt("account");
             var route = await services.GetRequiredService<IAccountProxyResolver>().ResolveAsync(account, ct);
-            var directAllowed = command.Args.TryGetValue("allowDirect", out var allowDirect)
-                && string.Equals(allowDirect, "true", StringComparison.OrdinalIgnoreCase);
-            if (route.Proxy is null && !directAllowed)
-                throw new InvalidOperationException($"账号 #{account} 未解析到有效代理，命令已阻止，禁止降级为直连。若确认允许直连，请显式添加 allowDirect=true");
             Add("run.context", route.Proxy is null
                 ? new { accountId = account, proxyMode = "direct", proxySummary = "直连" }
                 : new
