@@ -153,10 +153,14 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
             return (success, error, botUsername);
         }
 
-        var membership = join
-            ? await accountTools.JoinChatOrChannelAsync(accountId, target.Input, cancellationToken)
-            : await accountTools.LeaveChatOrChannelAsync(accountId, target.Input, cancellationToken);
-        return (membership.Success, membership.Error, membership.JoinedTitle);
+        if (join)
+        {
+            var membership = await accountTools.JoinChatOrChannelAsync(accountId, target.Input, cancellationToken);
+            return (membership.Success, membership.Error, membership.JoinedTitle);
+        }
+
+        var left = await accountTools.LeaveChatOrChannelAsync(accountId, target.Input, cancellationToken);
+        return (left.Success, left.Error, left.LeftTitle);
     }
 
     private static async Task<bool> DelayAsync(IModuleTaskExecutionHost host, int delayMs, CancellationToken cancellationToken)
