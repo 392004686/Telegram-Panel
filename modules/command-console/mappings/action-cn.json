@@ -13,6 +13,7 @@
   "chat.join": "加入群组或频道",
   "engagement.group.inspect": "检查可复用群组",
   "engagement.group.available": "查询可用群组",
+  "engagement.group.cleanup": "清理执行账号群组",
   "engagement.account.health": "检查执行账号",
   "engagement.batch.preview": "预览客户邀请批次",
   "engagement.batch.run": "执行客户邀请批次"

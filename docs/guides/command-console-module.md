@@ -47,6 +47,7 @@ group.invite account=2 group=123456 usernames="@alice,@bob" delay=2000
 engagement.account.health accountId=27
 engagement.group.inspect accountId=27 telegramGroupId=-1001234567890
 engagement.group.available accountId=27
+engagement.group.cleanup accountId=27 telegramGroupId=-1001234567890
 engagement.batch.preview accountId=27 telegramGroupId=-1001234567890 customerCategoryId=8 customerLimit=3
 engagement.batch.run accountId=27 telegramGroupId=-1001234567890 customerCategoryId=8 inviteCount=3 minSuccess=1 delayMin=30 delayMax=60
 ```
