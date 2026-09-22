@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using TelegramPanel.Core.Interfaces;
+using TelegramPanel.Core.Services;
+using TelegramPanel.Core.Services.Proxy;
 using TelegramPanel.Core.Services.Telegram;
 using TelegramPanel.Modules;
 using TelegramPanel.Web.Services;
@@ -12,7 +14,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.7", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.8", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -39,11 +41,15 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>命令控制台</title>
 <style>body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f6fb;color:#172033;margin:0;padding:28px}main{max-width:1120px;margin:auto}textarea{width:100%;min-height:96px;padding:12px;border:1px solid #d7dfeb;border-radius:8px;font:14px monospace;box-sizing:border-box}button,select{background:#fff;color:#245ea8;border:1px solid #cbd9ea;border-radius:7px;padding:8px 14px;cursor:pointer;margin:4px}button.primary{background:#1677ff;color:#fff;border-color:#1677ff}.card{background:#fff;padding:20px;border-radius:14px;box-shadow:0 2px 12px #dfe6f0;margin-bottom:18px}.muted{color:#667085}.history button{background:#f4f8ff;color:#1459b8;margin:4px;padding:9px 12px;text-align:left}.result-box{font:13px/1.55 Consolas,"Microsoft YaHei",monospace;white-space:pre-wrap;background:#fff;border:1px solid #dfe7f1;border-radius:9px;padding:16px}.raw{margin-top:14px;border-top:1px solid #e4eaf2;padding-top:10px}.raw pre{white-space:pre-wrap;max-height:420px;overflow:auto;background:#172033;color:#e8f0ff;padding:14px;border-radius:8px}</style></head>
 <body><main><h1>命令控制台</h1><p class="muted">执行宿主 Telegram 操作并查看原始步骤日志。每行一条命令，支持固定白名单命令。</p>
-<section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>中文操作<select id="action"><option value="group.list">群组列表</option><option value="group.get">群组详情</option><option value="account.sync">账号同步</option><option value="chat.join">加入群组或频道</option><option value="group.invite">邀请用户进群</option><option value="proxy.list">代理列表</option></select></label><label>账号<input id="account" value="2" style="width:70px;padding:8px;border:1px solid #d7dfeb;border-radius:7px"></label><label id="targetWrap">目标<input id="target" placeholder="群组 ID / 链接 / 用户名" style="width:260px;padding:8px;border:1px solid #d7dfeb;border-radius:7px"></label><button id="make">生成命令</button></div><textarea id="command" placeholder="生成后也可以手动编辑命令"></textarea><br><button class="primary" id="run">执行命令</button></section>
+<section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>能力分类<select id="category"><option value="account">账号</option><option value="group">群组</option><option value="proxy">代理</option><option value="chat">聊天</option></select></label><label>操作<select id="action"></select></label><div id="params"></div><button id="make">加入流程</button></div><p class="muted">可连续添加多个动作，下面每行按顺序执行。</p><textarea id="command" placeholder="例如：group.list account=2 refresh=true"></textarea><br><button class="primary" id="run">执行流程</button></section>
 <section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>运行结果</h2><label>展示：<select id="mode"><option value="auto">自动</option><option value="timeline">时间线</option><option value="table">表格</option><option value="card">卡片</option></select></label></div><div id="output" class="result">等待执行…</div></section>
 <section class="card history"><h2>历史运行</h2><div id="history">加载中…</div></section></main>
 <script>
 const base='/api/panel/extensions/command-console'; const out=document.getElementById('output');
+const CATALOG={account:[['account.list','账号列表',[]],['account.get','账号详情',[['account','账号','2']]],['account.sync','账号同步',[['account','账号','2']]]],group:[['group.list','群组列表',[['account','账号','2'],['refresh','刷新','true']]],['group.get','群组详情',[['account','账号','2'],['group','群组 ID','']]],['group.invite','邀请用户进群',[['account','账号','2'],['group','群组 ID',''],['usernames','用户名列表','@username'],['delay','间隔毫秒','2000']]]],proxy:[['proxy.list','代理列表',[]]],chat:[['chat.join','加入群组或频道',[['account','账号','2'],['target','目标链接','']]]]};
+function refreshCatalog(){const cat=document.getElementById('category').value,sel=document.getElementById('action');sel.innerHTML=CATALOG[cat].map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join('');renderParams()}
+function renderParams(){const cat=document.getElementById('category').value,a=document.getElementById('action').value,x=CATALOG[cat].find(y=>y[0]===a);document.getElementById('params').innerHTML=(x?.[2]||[]).map(p=>'<label>'+p[1]+'<input data-param="'+p[0]+'" value="'+p[2]+'" style="width:130px;padding:8px;border:1px solid #d7dfeb;border-radius:7px"></label>').join('')}
+document.getElementById('category').onchange=refreshCatalog;document.getElementById('action').onchange=renderParams;refreshCatalog();
 const EVENT={'run.started':'命令开始','command.parsed':'命令解析','run.context':'运行上下文','step.started':'步骤开始','step.succeeded':'步骤成功','step.failed':'步骤失败','run.succeeded':'命令成功','run.failed':'命令失败'};
 const ACTION={'group.list':'群组列表','group.get':'群组详情','group.invite':'邀请用户进群','account.sync':'账号同步','chat.join':'加入群组或频道','proxy.list':'代理列表'};
 const FIELD={id:'ID',telegramId:'Telegram ID',accessHash:'访问哈希',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',creatorAccountId:'创建者账号',isCreator:'是否创建者',isAdmin:'是否管理员',createdAt:'创建时间',syncedAt:'同步时间',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyHost:'代理地址',proxyPort:'代理端口',proxyStatus:'代理状态',moduleVersion:'模块版本',account:'账号',refresh:'刷新'};
@@ -56,8 +62,8 @@ function textData(d){if(!d)return '';if(Array.isArray(d)){return d.map((x,i)=>'�
 function render(events){window.lastEvents=events;const p=events.find(x=>x.type==='command.parsed'),c=events.find(x=>x.type==='run.context'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let s='┌────────────────────────────────────────────\n';s+='│ '+(ACTION[p?.data?.action]||p?.data?.action||'命令')+'\n';s+='├────────────────────────────────────────────\n';s+='│ ▶ 命令开始　'+fmt(events[0]?.timeUtc)+'\n';s+='│ · 命令解析　'+(ACTION[p?.data?.action]||p?.data?.action||'')+'　(account='+(p?.data?.args?.account||'')+')\n';s+='│ · 网络出口　'+(c?.data?.proxySummary||'未取得')+'\n';for(const e of events.filter(x=>x.type==='step.started'||x.type==='step.succeeded'||x.type==='step.failed')){s+='│ '+(e.type==='step.failed'?'✖':e.type==='step.succeeded'?'✔':'▶')+' '+(EVENT[e.type]||e.type)+'　'+fmt(e.timeUtc)+(e.message?'　'+e.message:'')+'\n';if(e.type==='step.succeeded'&&e.data)s+='│ 结果：\n'+textData(e.data)+'\n'}s+='│ '+(d?.type==='run.succeeded'?'✔ 命令成功':'✖ 命令失败')+'\n└────────────────────────────────────────────';out.innerHTML='<div class="result-box">'+esc(s)+'</div><details class="raw"><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>'}
 async function openRun(id){render(await (await fetch(base+'/runs/'+id)).json())}
 async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<button data-id="'+esc(id)+'">'+esc(id)+'</button>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))} 
-document.getElementById('run').onclick=async()=>{const command=document.getElementById('command').value.trim();if(!command)return;out.textContent='执行中…';const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();render(x.events||[]);load()};load();
-document.getElementById('make').onclick=()=>{const a=document.getElementById('action').value,n=document.getElementById('account').value.trim(),t=document.getElementById('target').value.trim();const q={"group.list":`group.list account=${n} refresh=true`,"group.get":`group.get account=${n} group=${t}`,"account.sync":`account.sync account=${n}`,"chat.join":`chat.join account=${n} target=${t}`,"group.invite":`group.invite account=${n} group=${t} usernames="@username" delay=2000`,"proxy.list":`proxy.list account=${n}`};document.getElementById('command').value=q[a]||''};
+document.getElementById('run').onclick=async()=>{const commands=document.getElementById('command').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(!commands.length)return;out.textContent='执行流程中…';let all=[];for(const command of commands){const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();all=all.concat(x.events||[])}render(all);load()};load();
+document.getElementById('make').onclick=()=>{const a=document.getElementById('action').value;const args=[...document.querySelectorAll('[data-param]')].map(x=>x.value?x.dataset.param+'='+((x.dataset.param==='usernames'?'"':'')+x.value+(x.dataset.param==='usernames'?'"':'')):null).filter(Boolean);const area=document.getElementById('command');area.value+=(area.value?'\n':'')+a+(args.length?' '+args.join(' '):'')};
 </script></body></html>
 """;
     public sealed record RunRequest(string Command);
@@ -74,7 +80,7 @@ internal static class CommandRunner
         try
         {
             var command = CommandParser.Parse(raw);
-            Add("run.started", new { moduleVersion = "1.0.7" });
+            Add("run.started", new { moduleVersion = "1.0.8" });
             Add("command.parsed", command);
             var account = command.RequireInt("account");
             var route = await services.GetRequiredService<IAccountProxyResolver>().ResolveAsync(account, ct);
@@ -93,10 +99,13 @@ internal static class CommandRunner
             object result = command.Action switch
             {
                 "account.sync" => await services.GetRequiredService<DataSyncService>().SyncAccountAsync(account, ct),
+                "account.list" => await services.GetRequiredService<AccountManagementService>().GetAllAccountsAsync(),
+                "account.get" => await services.GetRequiredService<AccountManagementService>().GetAccountAsync(account),
                 "chat.join" => await services.GetRequiredService<AccountTelegramToolsService>().JoinChatOrChannelAsync(account, command.Require("target"), ct),
                 "group.list" => await services.GetRequiredService<IGroupService>().GetVisibleGroupsAsync(account, ct),
                 "group.get" => await services.GetRequiredService<IGroupService>().GetGroupInfoAsync(account, long.Parse(command.Require("group"))),
                 "group.invite" => await InviteAsync(command, services, account, ct),
+                "proxy.list" => await services.GetRequiredService<ProxyManagementService>().ListAsync(ct),
                 _ => throw new CommandException($"不支持的命令：{command.Action}")
             };
             Add("step.succeeded", result);
