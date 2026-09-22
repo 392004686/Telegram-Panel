@@ -12,7 +12,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.2", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.3", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -46,9 +46,12 @@ public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvid
 const base='/api/panel/extensions/command-console'; const out=document.getElementById('output');
 const EVENT={'run.started':'命令开始','command.parsed':'命令解析','step.started':'步骤开始','step.succeeded':'步骤成功','step.failed':'步骤失败','run.succeeded':'命令成功','run.failed':'命令失败'};
 const ACTION={'group.list':'群组列表','group.get':'群组详情','group.invite':'邀请用户进群','account.sync':'账号同步','chat.join':'加入群组或频道','proxy.list':'代理列表'};
-const FIELD={id:'ID',telegramId:'Telegram ID',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyStatus:'代理状态'};
+const FIELD={id:'ID',telegramId:'Telegram ID',title:'名称',username:'用户名',memberCount:'成员数',about:'简介',isPublic:'是否公开',link:'链接',proxyId:'代理 ID',proxyMode:'代理模式',proxyType:'代理类型',proxyStatus:'代理状态',moduleVersion:'模块版本',account:'账号',refresh:'刷新'};
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); const fmt=x=>new Date(x).toLocaleString('zh-CN',{hour12:false});
-function render(events){const p=events.find(x=>x.type==='command.parsed'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let h='<h3>'+esc(ACTION[p?.data?.action]||p?.data?.action||'命令')+'</h3>';h+='<p>运行 ID：'+esc(events[0]?.runId)+'　时间：'+fmt(events[0]?.timeUtc)+'　状态：'+(d?.type==='run.succeeded'?'成功':'失败')+'</p>';h+=events.map(e=>'<div style="padding:8px;border-left:3px solid '+(e.type.includes('failed')?'#d33':'#248')+'"><b>'+esc(EVENT[e.type]||e.type)+'</b> <small>'+fmt(e.timeUtc)+'</small>'+(e.message?'<div>'+esc(e.message)+'</div>':'')+(e.data?'<pre>'+esc(JSON.stringify(e.data,null,2))+'</pre>':'')+'</div>').join('');h+='<details><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>';out.innerHTML=h}
+function value(v,k){if(v===null||v===undefined||v==='')return '';if(k==='link'&&String(v).startsWith('http'))return '<a href="'+esc(v)+'" target="_blank">'+esc(v)+'</a>';if(typeof v==='boolean')return v?'是':'否';if(typeof v==='object')return esc(JSON.stringify(v));return esc(v)}
+function record(o){return '<div class="result"><div class="kv">'+Object.entries(o||{}).filter(([k,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>'<b>'+esc(FIELD[k]||k)+'</b><span>'+value(v,k)+'</span>').join('')+'</div></div>'}
+function dataView(d){if(Array.isArray(d)){if(!d.length)return '<p>结果（0 条）</p>';const keys=[...new Set(d.flatMap(x=>Object.keys(x||{})))].filter(k=>d.some(x=>x?.[k]!==null&&x?.[k]!==undefined&&x?.[k]!==''));return '<p>结果（'+d.length+' 条）</p><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'+keys.map(k=>'<th style="text-align:left;padding:8px;border-bottom:1px solid #ddd">'+esc(FIELD[k]||k)+'</th>').join('')+'</tr></thead><tbody>'+d.map(x=>'<tr>'+keys.map(k=>'<td style="padding:8px;border-bottom:1px solid #eee">'+value(x?.[k],k)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>'}return record(d)}
+function render(events){const p=events.find(x=>x.type==='command.parsed'),d=events.find(x=>x.type==='run.succeeded'||x.type==='run.failed');let h='<h3>'+esc(ACTION[p?.data?.action]||p?.data?.action||'命令')+'</h3>';h+='<p>运行 ID：'+esc(events[0]?.runId)+'　时间：'+fmt(events[0]?.timeUtc)+'　状态：'+(d?.type==='run.succeeded'?'成功':'失败')+'</p>';h+=events.map(e=>'<div style="padding:8px 12px;margin:8px 0;border-left:3px solid '+(e.type.includes('failed')?'#d33':e.type.includes('succeeded')?'#198754':'#248')+'"><b>'+esc(EVENT[e.type]||e.type)+'</b> <small>'+fmt(e.timeUtc)+'</small>'+(e.message?'<div>'+esc(e.message)+'</div>':'')+(e.type==='step.succeeded'&&e.data?dataView(e.data):e.type==='command.parsed'&&e.data?record(e.data):'')+'</div>').join('');h+='<details><summary>查看原始 JSON</summary><pre>'+esc(JSON.stringify(events,null,2))+'</pre></details>';out.innerHTML=h}
 async function openRun(id){render(await (await fetch(base+'/runs/'+id)).json())}
 async function load(){const ids=await (await fetch(base+'/runs')).json();const box=document.getElementById('history');box.innerHTML=ids.length?ids.map(id=>'<button data-id="'+esc(id)+'">'+esc(id)+'</button>').join(''):'暂无记录';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRun(b.dataset.id))} 
 document.getElementById('run').onclick=async()=>{const command=document.getElementById('command').value.trim();if(!command)return;out.textContent='执行中…';const r=await fetch(base+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});const x=await r.json();render(x.events||[]);load()};load();
@@ -68,7 +71,7 @@ internal static class CommandRunner
         try
         {
             var command = CommandParser.Parse(raw);
-            Add("run.started", new { moduleVersion = "1.0.0" });
+            Add("run.started", new { moduleVersion = "1.0.3" });
             Add("command.parsed", command);
             var account = command.RequireInt("account");
             Add("step.started", new { step = command.Action });
