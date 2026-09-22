@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TelegramPanel.Data;
+using TelegramPanel.Data.Entities;
 using TelegramPanel.Core.BatchTasks;
 using TelegramPanel.Core.Services;
 using TelegramPanel.Core.Services.Telegram;
@@ -17,6 +19,14 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
         var logger = host.Services.GetRequiredService<ILogger<UserJoinSubscribeTaskHandler>>();
         var taskManagement = host.Services.GetRequiredService<BatchTaskManagementService>();
         var accountTools = host.Services.GetRequiredService<AccountTelegramToolsService>();
+        var dataSync = host.Services.GetRequiredService<DataSyncService>();
+        var db = host.Services.GetRequiredService<AppDbContext>();
+        async Task WriteTaskLogAsync(string level, string message)
+        {
+            var text = message.Length > 4000 ? message[..4000] : message;
+            db.BatchTaskLogs.Add(new BatchTaskLog { BatchTaskId = host.TaskId, Level = level, Message = text, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync(cancellationToken);
+        }
 
         var config = DeserializeConfig(host.Config);
         NormalizeConfig(config);
@@ -58,6 +68,23 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
                                 Target = link,
                                 Reason = NormalizeReason(result.Error)
                             });
+                            await WriteTaskLogAsync("error", $"账号 #{accountId} 目标 {link} 失败：{result.Error}");
+                        }
+                        else
+                        {
+                            await WriteTaskLogAsync("info", $"账号 #{accountId} 目标 {link} 成功：{result.Detail ?? "已完成"}");
+                            if (IsJoinOperation(config.Operation))
+                            {
+                                try
+                                {
+                                    var sync = await dataSync.SyncAccountAsync(accountId, cancellationToken);
+                                    await WriteTaskLogAsync("info", $"账号 #{accountId} 群组同步完成：新增/同步群组 {sync.TotalGroupsSynced}，频道 {sync.TotalChannelsSynced}");
+                                }
+                                catch (Exception syncEx)
+                                {
+                                    await WriteTaskLogAsync("warning", $"账号 #{accountId} 已加入，但群组列表同步失败：{syncEx.Message}");
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -70,6 +97,7 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
                             Target = link,
                             Reason = NormalizeReason(ex.Message)
                         });
+                        await WriteTaskLogAsync("error", $"账号 #{accountId} 目标 {link} 异常：{ex.Message}");
                     }
                     finally
                     {
@@ -98,7 +126,9 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
         await PersistConfigAsync(taskManagement, host.TaskId, config, failures, cancellationToken);
     }
 
-    private static async Task<(bool Success, string? Error)> ExecuteTargetAsync(
+    private static bool IsJoinOperation(string operation) => string.Equals(operation, UserJoinSubscribeOperations.Join, StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<(bool Success, string? Error, string? Detail)> ExecuteTargetAsync(
         AccountTelegramToolsService accountTools,
         int accountId,
         ChatMembershipTarget target,
@@ -108,7 +138,7 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
         var join = string.Equals(operation, UserJoinSubscribeOperations.Join, StringComparison.OrdinalIgnoreCase);
         if (target.IsBot)
         {
-            var (success, error, _) = join
+            var (success, error, botUsername) = join
                 ? await accountTools.StartExternalBotAsync(
                     accountId,
                     target.Input,
@@ -120,13 +150,13 @@ public sealed class UserJoinSubscribeTaskHandler : IModuleTaskHandler
                     target.Input,
                     cancellationToken: cancellationToken,
                     assumeBotUsername: target.AssumeBotUsername);
-            return (success, error);
+            return (success, error, botUsername);
         }
 
         var membership = join
             ? await accountTools.JoinChatOrChannelAsync(accountId, target.Input, cancellationToken)
             : await accountTools.LeaveChatOrChannelAsync(accountId, target.Input, cancellationToken);
-        return (membership.Success, membership.Error);
+        return (membership.Success, membership.Error, membership.JoinedTitle);
     }
 
     private static async Task<bool> DelayAsync(IModuleTaskExecutionHost host, int delayMs, CancellationToken cancellationToken)

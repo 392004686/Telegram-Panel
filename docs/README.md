@@ -1,10 +1,17 @@
-# 文档
+# Telegram Panel 文档索引
 
-使用者文档入口：[`docs/index.md`](index.md)
+## 当前使用
 
-本地预览（任选其一）：
+- [开发模块说明](developer/modules.md)
+- [API 参考](reference/api.md)
+- [配置参考](reference/configuration.md)
+- [代理管理](guides/proxy-management.md)
 
-- `uv venv && uv pip install -r requirements-docs.txt && uv run mkdocs serve`
-- `python -m venv .venv` 后：
-  - Windows：`.venv\\Scripts\\pip install -r requirements-docs.txt`，再 `.venv\\Scripts\\mkdocs serve`
-  - macOS/Linux：`.venv/bin/pip install -r requirements-docs.txt`，再 `.venv/bin/mkdocs serve`
+## 维护与交接
+
+- [工作区盘点](maintenance/workspace-inventory.md)
+- [项目交接记录](../HANDOFF.md)
+
+## 规则
+
+新增文档先判断是否已有同主题文件；同一主题只保留一个当前版本，历史差异写入交接记录或变更日志，不创建平行重复文档。

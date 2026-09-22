@@ -332,3 +332,69 @@
 - “记录”：只写入本地 `HANDOFF.md` 和变更记录，不推送、不部署；下一次执行更新必须先处理记录中的未完成 bug 和开发项。
 - 私人仓库使用 `origin`，作者仓库使用 `upstream`。同步作者更新时先 `git fetch upstream`，在独立同步分支审查差异，再合并到功能分支；不得用作者更新覆盖本地私有改动。
 - 当前私人分支：`codex/multi-user-ui`；当前最新代码提交：`2263b05`。当前 5000 容器已更新到该提交对应镜像，7000 作者版未改动。
+
+## 13. 2026-09-22 加群与历史整理交接
+
+### 本轮任务
+
+本轮处理批量加群/订阅任务、公开群组用户名解析、右键群组列表、ApiId/ApiHash 风控诊断，并准备将 Codex、Claude、Grok 的历史 work 副本整理为唯一主线。后续计划开发一个以控制台为主的命令驱动模块，支持分隔符、上下文、逐步输出、原始错误保留和可回看的运行历史。
+
+### 已完成
+
+- 公开 `https://t.me/<username>` 已改为 `Contacts.ResolveUsername` + `Channels.JoinChannel`；`t.me/+hash` 仍走邀请链接流程。
+- 同步修复公开群组退出流程。
+- 修复了一次编译错误：删除不存在的 `TL.Messages_ChatsBase` 类型并修复局部变量重名。
+- 当前修复提交：`21aa178`，已推送 `origin/codex/multi-user-ui`。
+- 服务器已验证运行 `21aa178`，镜像 `telegram-panel:multi-user-ui-21aa178`，容器 healthy。
+
+### 任务 #64 证据与结论
+
+- 任务配置：账号 `#19`，目标 `https://t.me/kybcapp`，`treatNoBotSuffixAsBot=false`，操作 `join`。
+- `kybcapp` 的公开 Telegram 页面可访问，目标存在。
+- 账号 #2 加入同一目标成功；账号 #19 返回 `USERNAME_NOT_OCCUPIED`。
+- 服务器数据库显示账号 #19 的 `ApiId=2040`，`TelegramStatusOk=false`，状态包含 `FROZEN_METHOD_INVALID`。
+- 结论：这是账号 #19/API 会话受限造成的目标不可见或解析被拒绝，不是当前代码仍把目标误判为 Bot。错误文案应改为“目标不存在或当前账号因限制不可见”，同时保留原始 RPC 错误。
+
+### 右键“查看加入的群组”为什么查不到
+
+- `GroupService.GetVisibleGroupsAsync` 会从 `Messages_GetAllDialogs` 拉取账号当前可见的全部群组，不只创建者群组。
+- `DataSyncService` 才会把 Telegram 群组写入本地 `Groups` / `AccountGroups`。
+- 右键账号菜单的 `/accounts/{id}/groups` 只读本地 `AccountGroups`，不实时查询 Telegram。
+- `UserJoinSubscribeTaskHandler` 加群成功后目前只更新任务进度，没有触发单账号群组同步，也没有成功明细日志。
+- 因此“已成功加入但右键列表没有”是同步闭环缺失，不代表未加入。
+
+### “加入别人群后邀请用户”能力
+
+项目已有 `GroupInviteUsersTaskHandler`、`GroupService.InviteUserAsync` 和群组邀请 API。加入别人群后可以邀请用户，但执行账号必须在 Telegram 侧拥有该群的邀请权限；普通成员、隐私设置、群类型及账号风控都可能导致邀请失败。同步群组关系后，群才会出现在本地可选列表。
+
+### 当前卡点
+
+1. 加群成功后需要增加成功日志、Telegram 标题/ID 证据，并触发最小增量同步。
+2. `USERNAME_NOT_OCCUPIED` 需要区分“目标不存在”和“当前账号不可见/受限”。
+3. 需要盘点 `work/` 下历史目录、未跟踪 `tools/_*.py`、缓存、构建产物和重复文档，先建清单再删除。
+4. 需要决定命令模块使用现有模块加载器热更新，还是采用最小宿主重启边界；不能复制 Session、代理和客户端池逻辑。
+
+### 下一步计划
+
+1. 先建立 `docs/maintenance/workspace-inventory.md`：目录、来源、分支/提交、文件哈希、保留建议。
+2. 合并有效文档，历史记录单独归档，不直接覆盖旧 `HANDOFF.md`。
+3. 修复加群成功日志和同步闭环，补测试后用 Docker 构建验证。
+4. 实现控制台命令模块：命令协议、上下文、步骤事件、成功输出、原始错误、运行历史和最小重启入口。
+5. 每个阶段更新本文件；“记录”阶段只本地暂存，不推送、不部署。
+
+### 已踩坑
+
+- 不要把公开用户名交给邀请 Hash 分析接口。
+- `USERNAME_NOT_OCCUPIED` 不一定说明目标不存在，受限账号也可能得到该错误。
+- 任务 `completed` 不等于业务成功，必须检查 `Failed` 和失败明细。
+- 本机没有项目要求的 .NET SDK 时只能以 Docker 构建作为编译验证。
+- Docker BuildKit 动态进度会与脚本输出交错；部署脚本应使用 `BUILDKIT_PROGRESS=plain`、`COMPOSE_PROGRESS=plain` 或 `--progress=plain`。
+- 未完成来源盘点前，不要删除 `work/` 历史目录、未跟踪脚本或缓存。
+
+### 本轮进度（继续）
+
+- 已新增 `docs/maintenance/workspace-inventory.md`，记录 `work/` 历史副本、主仓库构建缓存和清理规则。
+- 已新增 `docs/README.md`，作为当前文档唯一入口。
+- 正在修改 `UserJoinSubscribeTaskHandler`：成功/失败/异常写入 `BatchTaskLogs`；加群成功后调用 `DataSyncService.SyncAccountAsync`，使右键群组列表能看到新加入的群。
+- 右键群组内“单独加入邀请”尚未开始实现；后续应复用现有 `GroupService.InviteUserAsync` 和 `GroupInviteUsersTaskHandler`，前端只增加轻量输入与结果明细，不预先以本地权限判断拦截，实际 Telegram 返回作为准确信息。
+- 本轮改动完成后先用 Docker 构建验证，再统一提交和推送一次。
