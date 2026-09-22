@@ -26,6 +26,28 @@
 
 ## 2. 账号分组
 
+本文中的 `A1`、`B1`、`G1`、`K1` 仅是帮助理解流程的临时别名，不是正式字段，也不应直接写入命令、数据库或审计记录。正式实现必须使用宿主已有的实际标识和分类字段。
+
+| 概念 | 正式字段/来源 |
+|---|---|
+| 账号 | `accountId` |
+| 账号分组 | `accountCategoryId` 或宿主账号分类 ID |
+| Telegram 账号 | `telegramUserId` |
+| 群组记录 | `groupId` |
+| Telegram 群组 | `telegramGroupId` |
+| 客户记录 | `customerId` |
+| Telegram 客户 | `telegramUserId` |
+| 执行批次 | `runId` / `batchTaskId` |
+
+命令参数也应使用正式字段，例如：
+
+```text
+engagement.batch.preview accountCategoryId=12 groupId=345 customerCategoryId=8
+engagement.batch.run accountId=27 groupId=345 customerCategoryId=8
+```
+
+实际字段名称以宿主 API 和数据模型为准；命令映射层负责转换，不重新创造 A/B/G/K 编号。
+
 ### 2.1 A 组：群资产维护账号
 
 示例：`A1`、`A2`、`A3`、`A4`。
@@ -64,6 +86,8 @@ B 账号选择群组时必须同时满足：
 只要群内存在客户或未识别外部成员，就不能把群当作干净群复用。客户在本系统中被标记为已退出，不代表 Telegram 群成员快照中已经不存在该客户。
 
 ### 3.1 完整场景示例
+
+本节的 `A1`、`B1`、`G1`、`K1` 等名称全部是叙事别名。实现时必须将它们替换为 `accountId`、`accountCategoryId`、`groupId`、`telegramGroupId`、`customerId` 和 `telegramUserId` 等真实值；别名不能成为数据库主键或接口参数。
 
 假设当前资源如下：
 
