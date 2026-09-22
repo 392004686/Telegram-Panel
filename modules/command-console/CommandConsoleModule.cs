@@ -14,7 +14,7 @@ namespace TelegramPanel.CommandConsole;
 
 public sealed class CommandConsoleModule : ITelegramPanelModule, IModuleUiProvider
 {
-    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.8", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
+    public ModuleManifest Manifest => new() { Id = "command-console", Name = "命令控制台", Version = "1.0.9", Host = new HostCompatibility { Min = "1.31.76" }, Entry = new ModuleEntryPoint { Assembly = "TelegramPanel.CommandConsole.dll", Type = GetType().FullName! } };
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         services.AddSingleton(new CommandConsoleStore(Path.Combine(context.ModulesRootPath, "data", "command-console")));
@@ -80,10 +80,14 @@ internal static class CommandRunner
         try
         {
             var command = CommandParser.Parse(raw);
-            Add("run.started", new { moduleVersion = "1.0.8" });
+            Add("run.started", new { moduleVersion = "1.0.9" });
             Add("command.parsed", command);
             var account = command.RequireInt("account");
             var route = await services.GetRequiredService<IAccountProxyResolver>().ResolveAsync(account, ct);
+            var directAllowed = command.Args.TryGetValue("allowDirect", out var allowDirect)
+                && string.Equals(allowDirect, "true", StringComparison.OrdinalIgnoreCase);
+            if (route.Proxy is null && !directAllowed)
+                throw new InvalidOperationException($"账号 #{account} 未解析到有效代理，命令已阻止，禁止降级为直连。若确认允许直连，请显式添加 allowDirect=true");
             Add("run.context", route.Proxy is null
                 ? new { accountId = account, proxyMode = "direct", proxySummary = "直连" }
                 : new
