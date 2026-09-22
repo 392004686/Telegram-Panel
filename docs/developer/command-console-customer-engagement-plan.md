@@ -467,3 +467,30 @@ Result, ErrorCode, ChineseMessage, OccurredAtUtc, ContextJson
 5. 已知限制或待验收项。
 
 设计变更不得只修改聊天内容，必须同步更新本文对应章节和完成记录，方便后续按编号核对。
+
+## 13. 首轮实现验收记录
+
+| 项目 | 结果 |
+|---|---|
+| 模块版本 | `1.1.0` |
+| 实现入口 | `modules/command-console/CommandConsoleModule.cs` |
+| 中文映射 | `modules/command-console/mappings/` |
+| 使用说明 | `docs/guides/command-console-module.md` |
+| 打包命令 | `powershell -ExecutionPolicy Bypass -File .\\tools\\package-command-console.ps1` |
+| 打包产物 | `artifacts/modules/command-console.tpm` |
+| 模块发布提交 | `c7fb9c4` |
+| Release publish | 通过，生成 `.tpm` |
+| 现有后端测试 | 530 通过、1 失败；失败为已有 `ModuleTaskCreationCatalogTests` 期望 10 个任务但当前目录实际为 12 个，不是本模块编译错误 |
+
+首轮已实现的命令：
+
+```text
+engagement.account.health
+engagement.group.inspect
+engagement.group.available
+engagement.group.cleanup
+engagement.batch.preview
+engagement.batch.run
+```
+
+首轮明确未实现的部分：任务中心持久化批次、浏览器关闭后的后台恢复、进程重启后的持久化租约、多线程 Worker、活跃消息规则、暂停/继续的跨请求控制。这些仍保留在完成表中，不能把当前模块的同步批次误称为任务中心后台任务。
