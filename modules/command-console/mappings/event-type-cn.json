@@ -7,5 +7,22 @@
   "step.retrying": "步骤重试",
   "run.succeeded": "命令成功",
   "run.failed": "命令失败",
-  "run.canceled": "命令取消"
+  "run.canceled": "命令取消",
+  "run.context": "运行上下文",
+  "pool.refreshed": "资源池刷新",
+  "account.health.checked": "账号健康检查",
+  "proxy.checked": "代理状态确认",
+  "group.candidate.filtered": "群组候选筛选",
+  "group.members.checked": "群组成员检查",
+  "lock.acquired": "资源锁已获得",
+  "customer.reserved": "客户已领取",
+  "invite.submitted": "邀请请求提交",
+  "invite.confirmed": "邀请结果确认",
+  "invite.unconfirmed": "邀请未确认",
+  "failure.classified": "失败原因归类",
+  "account.circuit_opened": "账号触发熔断",
+  "group.cleaned": "群组清理确认",
+  "lock.released": "资源锁释放",
+  "run.paused": "批次暂停",
+  "run.completed": "批次完成"
 }

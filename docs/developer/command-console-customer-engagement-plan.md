@@ -1,6 +1,6 @@
 # 命令控制台：A/B 账号与群组客户任务设计记录
 
-状态：方案已记录，模块实现尚未开始
+状态：方案已记录，命令控制台模块首轮实现已完成；任务中心持久化和多线程仍未接入
 
 记录日期：2026-09-23
 
@@ -42,8 +42,8 @@
 命令参数也应使用正式字段，例如：
 
 ```text
-engagement.batch.preview accountCategoryId=12 groupId=345 customerCategoryId=8
-engagement.batch.run accountId=27 groupId=345 customerCategoryId=8
+engagement.batch.preview accountCategoryId=12 telegramGroupId=-1001234567890 customerCategoryId=8
+engagement.batch.run accountId=27 telegramGroupId=-1001234567890 customerCategoryId=8
 ```
 
 实际字段名称以宿主 API 和数据模型为准；命令映射层负责转换，不重新创造 A/B/G/K 编号。
@@ -430,14 +430,15 @@ Result, ErrorCode, ChineseMessage, OccurredAtUtc, ContextJson
 | 4 | 客户级、账号级、系统级失败分类 | 已完成 | 2026-09-23 | 本文第 6 节；不再统一累计失败 |
 | 5 | “RPC 接受但未入群”确认流程 | 已完成 | 2026-09-23 | 本文第 5、6 节；成员快照确认后才算成功 |
 | 6 | 单线程阶段的账号/群组/客户锁模型 | 已完成 | 2026-09-23 | 本文第 7 节；多线程实现待后续开发 |
-| 7 | 模块命令白名单和中文参数映射 | 未开始 | — | 增加 `engagement.*` 命令并校验必选参数 |
-| 8 | 模块侧群组成员筛选输出 | 未开始 | — | 输出跳过原因和成员分类 |
-| 9 | 模块侧邀请确认与失败归因输出 | 未开始 | — | 复用宿主 GroupService 的确认结果 |
+| 7 | 模块命令白名单和中文参数映射 | 已完成 | 2026-09-23 | `modules/command-console/CommandConsoleModule.cs`；`engagement.*` 命令校验正式 ID 和必选参数 |
+| 8 | 模块侧群组成员筛选输出 | 已完成 | 2026-09-23 | `engagement.group.inspect` / `engagement.group.available`；客户或未知成员会跳过 |
+| 9 | 模块侧邀请确认与失败归因输出 | 已完成 | 2026-09-23 | `engagement.batch.run` 复用 `IGroupService.ConfirmGroupMemberAsync` |
 | 10 | 模块侧批次暂停、恢复和清理命令 | 未开始 | — | 保留 runId、恢复点和资源锁状态 |
 | 11 | 冷却时间和恢复策略 | 未开始 | — | 记录账号、群组、客户各自的冷却截止时间 |
 | 12 | 结构化事件与任务中心日志兼容 | 未开始 | — | 统一事件字段，暂不搬运格式化文本 |
-| 13 | 多线程租约和并发锁 | 未开始 | — | 在单线程验收通过后实施 |
-| 14 | 消息规则模板和操作审计联动 | 未开始 | — | 复用任务中心规则和 BatchTaskLogs |
+| 13 | 单线程账号/群组锁 | 已完成 | 2026-09-23 | `EngagementCoordinator` 防止同一账号或群组重复执行；进程重启后租约持久化仍待实现 |
+| 14 | 多线程租约和并发锁 | 未开始 | — | 在单线程验收通过后实施 |
+| 15 | 消息规则模板和操作审计联动 | 未开始 | — | 复用任务中心规则和 BatchTaskLogs |
 
 ### 11.1 当前对话中已确认的设计决策
 

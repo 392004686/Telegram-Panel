@@ -19,5 +19,20 @@
   "proxyType": "代理类型",
   "proxyHost": "代理地址",
   "proxyPort": "代理端口",
-  "proxyStatus": "代理状态"
+  "proxyStatus": "代理状态",
+  "accountId": "账号 ID",
+  "accountCategoryId": "账号分类 ID",
+  "customerId": "客户 ID",
+  "customerCategoryId": "客户分类 ID",
+  "groupId": "群组 ID",
+  "telegramGroupId": "Telegram 群组 ID",
+  "telegramUserId": "Telegram 用户 ID",
+  "reusable": "是否可复用",
+  "reason": "判定原因",
+  "customerMemberCount": "客户成员数",
+  "unknownMemberCount": "未识别成员数",
+  "successCount": "成功数",
+  "minSuccess": "最低成功数",
+  "classification": "失败分类",
+  "proxySummary": "网络出口"
 }
