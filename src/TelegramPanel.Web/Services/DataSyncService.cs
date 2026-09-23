@@ -310,6 +310,72 @@ public class DataSyncService
         return await SyncGroupsOnlyAsync(new[] { account }, cancellationToken, progressCallback);
     }
 
+    public async Task<SelectedGroupsSyncSummary> SyncSelectedGroupsOnlyAsync(
+        int accountId,
+        IReadOnlyCollection<int>? groupIds,
+        CancellationToken cancellationToken)
+    {
+        if (accountId <= 0)
+            throw new InvalidOperationException("请先选择用于检查群组的账号");
+
+        var selectedIds = (groupIds ?? Array.Empty<int>()).Where(x => x > 0).Distinct().ToArray();
+        if (selectedIds.Length == 0)
+            throw new InvalidOperationException("请至少选择一个群组");
+
+        var account = await _accountManagement.GetAccountAsync(accountId)
+            ?? throw new InvalidOperationException($"账号不存在：{accountId}");
+        if (ShouldSkipAccountDataSync(account))
+            throw new InvalidOperationException($"账号 {accountId} 当前不可用于群组刷新：{account.TelegramStatusSummary ?? "Session 不可用"}");
+
+        var selectedGroups = new List<Group>(selectedIds.Length);
+        foreach (var groupId in selectedIds)
+        {
+            var group = await _groupManagement.GetGroupAsync(groupId)
+                ?? throw new InvalidOperationException($"群组记录不存在：{groupId}");
+            selectedGroups.Add(group);
+        }
+
+        // Telegram 端先读取账号当前可见对话，再只更新用户勾选的群组；
+        // 未勾选群组的本地数据和账号关联不会被触碰。
+        var visibleGroups = await _groupService.GetVisibleGroupsAsync(accountId, cancellationToken);
+        var visibleByTelegramId = visibleGroups
+            .GroupBy(x => x.TelegramId)
+            .ToDictionary(x => x.Key, x => x.First());
+        var checkedAtUtc = DateTime.UtcNow;
+        var visibleCount = 0;
+        var notVisibleCount = 0;
+
+        foreach (var group in selectedGroups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!visibleByTelegramId.TryGetValue(group.TelegramId, out var info))
+            {
+                await _groupManagement.MarkAccountGroupNotVisibleAsync(group.Id, accountId, checkedAtUtc);
+                notVisibleCount++;
+                continue;
+            }
+
+            var saved = await _groupManagement.CreateOrUpdateGroupAsync(new Group
+            {
+                TelegramId = info.TelegramId,
+                AccessHash = info.AccessHash > 0 ? info.AccessHash : null,
+                Title = info.Title,
+                Username = info.Username,
+                MemberCount = info.MemberCount,
+                About = info.About,
+                CreatorAccountId = info.IsCreator ? accountId : null,
+                CreatedAt = info.CreatedAt,
+                CurrentStatus = "可见",
+                CurrentStatusCheckedAtUtc = checkedAtUtc,
+                CurrentStatusAccountId = accountId
+            });
+            await _groupManagement.UpsertAccountGroupAsync(accountId, saved.Id, info.IsCreator, info.IsAdmin, checkedAtUtc);
+            visibleCount++;
+        }
+
+        return new SelectedGroupsSyncSummary(selectedIds.Length, visibleCount, notVisibleCount);
+    }
+
     public async Task<SyncSummary> SyncActiveAccountGroupsOnlyAsync(
         CancellationToken cancellationToken,
         Func<SyncProgress, Task>? progressCallback = null)
@@ -739,6 +805,8 @@ public class DataSyncService
     }
 
     public readonly record struct SyncProgress(int TotalAccounts, int ProcessedAccounts, int FailedAccounts);
+
+    public sealed record SelectedGroupsSyncSummary(int RequestedGroups, int VisibleGroups, int NotVisibleGroups);
 
     public readonly record struct TrackedSyncResult(int TaskId, SyncSummary Summary);
 }

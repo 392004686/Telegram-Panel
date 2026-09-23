@@ -201,6 +201,23 @@ public class GroupManagementService
             await RemoveAccountGroupAsync(groupId, accountId);
     }
 
+    public async Task MarkAccountGroupNotVisibleAsync(int groupId, int accountId, DateTime checkedAtUtc)
+    {
+        var group = await _groupRepository.GetByIdAsync(groupId);
+        if (group != null
+            && (!group.CurrentStatusCheckedAtUtc.HasValue || checkedAtUtc >= group.CurrentStatusCheckedAtUtc))
+        {
+            group.CurrentStatus = "账号不可见";
+            group.CurrentStatusCheckedAtUtc = checkedAtUtc;
+            group.CurrentStatusAccountId = accountId;
+            await _groupRepository.UpdateAsync(group);
+        }
+
+        // Keep the local group record so the just-refreshed "not visible" state
+        // remains inspectable even when this was its last account association.
+        await _accountGroupRepository.DeleteAsync(accountId, groupId);
+    }
+
     public async Task<IReadOnlyList<AccountGroup>> GetAccountGroupMembershipsAsync(int accountId, CancellationToken cancellationToken = default)
     {
         return await _accountGroupRepository.GetByAccountAsync(accountId, cancellationToken);

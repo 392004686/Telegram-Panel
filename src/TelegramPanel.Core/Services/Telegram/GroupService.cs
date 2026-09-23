@@ -1448,6 +1448,33 @@ public class GroupService : IGroupService
         throw new InvalidOperationException($"群组 {groupId} not found");
     }
 
+    public async Task<string> ExportPrivateInviteLinkAsync(int accountId, long groupId)
+    {
+        var client = await GetOrCreateConnectedClientAsync(accountId);
+        var dialogs = await client.Messages_GetAllDialogs();
+
+        ChatBase? chat = dialogs.chats.Values
+            .OfType<Chat>()
+            .FirstOrDefault(c => c.IsActive && c.id == groupId);
+        chat ??= dialogs.chats.Values
+            .OfType<Channel>()
+            .FirstOrDefault(c => c.IsActive && !c.IsChannel && c.id == groupId);
+        if (chat == null)
+            throw new InvalidOperationException($"群组 {groupId} not found");
+
+        var invite = await client.Messages_ExportChatInvite(chat);
+        var link = invite switch
+        {
+            ChatInviteExported exported => exported.link,
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(link))
+            throw new InvalidOperationException("无法导出私人邀请链接（可能无邀请权限）");
+
+        return link;
+    }
+
     private static async Task<InputUser> ResolveTransferTargetUserAsync(Client client, string targetUsername)
     {
         var username = (targetUsername ?? string.Empty).Trim().TrimStart('@');

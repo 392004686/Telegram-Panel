@@ -31,8 +31,15 @@
         <el-button :icon="Select" :disabled="loading || rows.length === 0" @click="toggleSelection">{{ selectionText }}</el-button>
         <el-button v-if="kind === 'group'" :icon="Plus" @click="router.push('/groups/create')">创建群组</el-button>
         <el-button v-if="kind === 'group'" :icon="Folder" @click="router.push('/groups/categories')">分类管理</el-button>
-        <el-button :icon="Refresh" :disabled="loading || filters.accountId <= 0" @click="syncCurrent">同步当前</el-button>
-        <el-button :icon="Refresh" :disabled="loading" @click="syncAll">同步全部</el-button>
+        <el-button
+          v-if="kind === 'group'"
+          :icon="Refresh"
+          :loading="syncing"
+          :disabled="loading || syncing || filters.accountId <= 0 || selectedIds.length === 0"
+          @click="syncSelectedGroups"
+        >同步所选群组</el-button>
+        <el-button :icon="Refresh" :loading="syncing" :disabled="loading || syncing || filters.accountId <= 0" @click="syncCurrent">{{ kind === 'group' ? '同步当前账号群组' : '同步当前' }}</el-button>
+        <el-button :icon="Refresh" :loading="syncing" :disabled="loading || syncing" @click="syncAll">{{ kind === 'group' ? '同步全部群组' : '同步全部' }}</el-button>
         <el-dropdown :disabled="loading">
           <el-button>
             批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -80,12 +87,36 @@
             <el-tag :type="row.username ? 'success' : 'warning'" size="small">{{ row.username ? '公开' : '私密' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('category')" label="分类" min-width="120">
+        <el-table-column v-if="isColumnVisible('category')" :label="kind === 'group' ? '群组分类' : '分组'" min-width="150">
           <template #default="{ row }">
-            <el-tag :type="rowCategoryId(row) ? 'primary' : 'info'" size="small">{{ rowCategoryName(row) || '未分类' }}</el-tag>
+            <el-tag :type="rowCategoryId(row) ? 'primary' : 'info'" size="small">{{ rowCategoryLabel(row) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column v-if="isColumnVisible('memberCount')" prop="memberCount" label="成员数" width="90" />
+        <el-table-column v-if="kind === 'group' && isColumnVisible('currentStatus')" label="当前状态" min-width="165">
+          <template #default="{ row }">
+            <el-tooltip :content="groupStatusHint(row)" placement="top">
+              <el-tag :type="groupStatusType(row)" size="small">{{ groupStatusText(row) }}</el-tag>
+            </el-tooltip>
+            <div v-if="groupCheckedAt(row)" class="cell-sub">{{ formatTime(groupCheckedAt(row)) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="kind === 'group' && isColumnVisible('publicLink')" label="公开链接" min-width="190">
+          <template #default="{ row }">
+            <el-link v-if="groupPublicLink(row)" :href="groupPublicLink(row) || undefined" target="_blank" type="primary">
+              {{ compactLink(groupPublicLink(row) || '') }}
+            </el-link>
+            <span v-else class="muted">无公开用户名</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="kind === 'group' && isColumnVisible('inviteLink')" label="私人邀请链接" min-width="180">
+          <template #default="{ row }">
+            <el-link v-if="groupInviteLink(row)" :href="groupInviteLink(row) || undefined" target="_blank" type="primary">
+              {{ compactLink(groupInviteLink(row) || '') }}
+            </el-link>
+            <el-button v-else link type="primary" :disabled="syncing" @click="generatePrivateInvite(row)">生成并缓存</el-button>
+          </template>
+        </el-table-column>
         <el-table-column v-if="filters.accountId > 0 && isColumnVisible('currentRole')" label="当前账号角色" width="120">
           <template #default="{ row }">
             <el-tag size="small" :type="roleTagType(currentRole(row))">{{ currentRoleText(row) }}</el-tag>
@@ -150,8 +181,21 @@
         <el-descriptions-item label="名称">{{ detail.row.title }}</el-descriptions-item>
         <el-descriptions-item label="Telegram ID">{{ detail.row.telegramId }}</el-descriptions-item>
         <el-descriptions-item label="用户名">{{ detail.row.username ? `@${detail.row.username}` : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="分类">{{ rowCategoryName(detail.row) || '未分类' }}</el-descriptions-item>
+        <el-descriptions-item label="分类">{{ rowCategoryLabel(detail.row) }}</el-descriptions-item>
         <el-descriptions-item label="成员数">{{ detail.row.memberCount }}</el-descriptions-item>
+        <template v-if="kind === 'group'">
+          <el-descriptions-item label="当前状态">{{ groupStatusText(detail.row) }}</el-descriptions-item>
+          <el-descriptions-item label="状态检查时间">{{ groupCheckedAt(detail.row) ? formatTime(groupCheckedAt(detail.row) || undefined) : '尚未检查' }}</el-descriptions-item>
+          <el-descriptions-item label="状态检查账号">{{ groupStatusAccount(detail.row) }}</el-descriptions-item>
+          <el-descriptions-item label="公开链接">
+            <el-link v-if="groupPublicLink(detail.row)" :href="groupPublicLink(detail.row) || undefined" target="_blank">{{ groupPublicLink(detail.row) }}</el-link>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="私人邀请链接">
+            <el-link v-if="groupInviteLink(detail.row)" :href="groupInviteLink(detail.row) || undefined" target="_blank">{{ groupInviteLink(detail.row) }}</el-link>
+            <el-button v-else link type="primary" @click="generatePrivateInvite(detail.row)">生成并缓存</el-button>
+          </el-descriptions-item>
+        </template>
         <el-descriptions-item label="创建者">{{ detail.row.creatorDisplayPhone || (detail.row.creatorAccountId ? `账号 ${detail.row.creatorAccountId}` : '（非系统创建）') }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(detail.row.createdAt || detail.row.systemCreatedAtUtc) }}</el-descriptions-item>
         <el-descriptions-item label="最后同步">{{ formatTime(detail.row.syncedAt) }}</el-descriptions-item>
@@ -677,6 +721,7 @@ const kindName = computed(() => (props.kind === 'channel' ? '频道' : '群组')
 const linkName = computed(() => (props.kind === 'channel' ? '邀请链接' : '加入链接'))
 
 const loading = ref(false)
+const syncing = ref(false)
 const rows = ref<Row[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -705,13 +750,38 @@ const chatResourceColumns: ColumnVisibilityOption[] = [
   { key: 'type', label: '类型' },
   { key: 'category', label: '分类' },
   { key: 'memberCount', label: '成员数' },
+  ...(props.kind === 'group'
+    ? [
+        { key: 'currentStatus', label: '当前状态' },
+        { key: 'publicLink', label: '公开链接' },
+        { key: 'inviteLink', label: '私人邀请链接' },
+      ]
+    : []),
   { key: 'currentRole', label: '当前账号角色' },
   { key: 'creator', label: '创建账号' },
   { key: 'syncedAt', label: '最后同步' },
 ]
 
+function migrateGroupColumnPreferences(columns: ColumnVisibilityOption[]) {
+  if (props.kind !== 'group') return
+  try {
+    const versionedKey = 'telegram-panel.group.columns.v2'
+    if (localStorage.getItem(versionedKey)) return
+    const previous = localStorage.getItem('telegram-panel.group.columns')
+    if (!previous) return
+    const saved = JSON.parse(previous)
+    const valid = new Set(columns.map((column) => column.key))
+    const selected = Array.isArray(saved) ? saved.filter((key) => typeof key === 'string' && valid.has(key)) : []
+    localStorage.setItem(versionedKey, JSON.stringify([...new Set([...selected, 'currentStatus', 'publicLink', 'inviteLink'])]))
+  } catch {
+    // If local storage is unavailable or malformed, the normal defaults apply.
+  }
+}
+
+migrateGroupColumnPreferences(chatResourceColumns)
+
 const { visibleColumnKeys, isColumnVisible, resetColumns, showAllColumns } = usePersistentColumnVisibility(
-  `telegram-panel.${props.kind}.columns`,
+  props.kind === 'group' ? 'telegram-panel.group.columns.v2' : `telegram-panel.${props.kind}.columns`,
   chatResourceColumns,
 )
 
@@ -948,6 +1018,54 @@ function rowCategoryName(row: Row) {
   return props.kind === 'channel' ? (row as ChannelListItem).groupName : (row as GroupListItem).categoryName
 }
 
+function rowCategoryLabel(row: Row) {
+  const id = rowCategoryId(row)
+  const name = rowCategoryName(row) || '未分类'
+  return props.kind === 'group' && id ? `${name} (#${id})` : name
+}
+
+function groupStatusText(row: Row) {
+  return props.kind === 'group' ? (row as GroupListItem).currentStatus || '未检查' : '-'
+}
+
+function groupStatusType(row: Row): 'success' | 'warning' | 'info' {
+  const status = groupStatusText(row)
+  if (status === '可见') return 'success'
+  if (status === '账号不可见') return 'warning'
+  return 'info'
+}
+
+function groupCheckedAt(row: Row) {
+  return props.kind === 'group' ? (row as GroupListItem).currentStatusCheckedAtUtc : null
+}
+
+function groupStatusAccount(row: Row) {
+  const accountId = props.kind === 'group' ? (row as GroupListItem).currentStatusAccountId : null
+  return accountId ? `账号 ${accountId}` : '-'
+}
+
+function groupStatusHint(row: Row) {
+  if (props.kind !== 'group') return ''
+  const group = row as GroupListItem
+  const checkedAt = group.currentStatusCheckedAtUtc ? formatTime(group.currentStatusCheckedAtUtc) : '尚未检查'
+  const account = group.currentStatusAccountId ? `账号 ${group.currentStatusAccountId}` : '未知账号'
+  return `最近检查：${checkedAt}；检查账号：${account}。账号不可见只代表该账号本次未看到群组。`
+}
+
+function groupPublicLink(row: Row): string | null {
+  if (props.kind !== 'group') return null
+  const group = row as GroupListItem
+  return group.publicLink || (group.username ? `https://t.me/${group.username.replace(/^@/, '')}` : null)
+}
+
+function groupInviteLink(row: Row): string | null {
+  return props.kind === 'group' ? (row as GroupListItem).inviteLink || null : null
+}
+
+function compactLink(link: string) {
+  return link.replace(/^https?:\/\//, '')
+}
+
 function currentRole(row: Row): ChatMembershipAccount | undefined {
   return row.accounts.find((x) => x.accountId === filters.accountId)
 }
@@ -996,21 +1114,68 @@ async function syncCurrent() {
     ElMessage.info('请先选择一个账号')
     return
   }
-  const result = props.kind === 'channel' ? await panelApi.syncChannels(filters.accountId) : await panelApi.syncGroups(filters.accountId)
-  ElMessage.success(result.message)
-  await load()
+  syncing.value = true
+  try {
+    const result = props.kind === 'channel' ? await panelApi.syncChannels(filters.accountId) : await panelApi.syncGroups(filters.accountId)
+    if (result.failures.length > 0) ElMessage.warning(`${result.message}；失败 ${result.failures.length} 个账号`)
+    else ElMessage.success(props.kind === 'group' ? `${result.message}，刷新群组 ${result.totalGroupsSynced} 个` : result.message)
+    await load()
+  } finally {
+    syncing.value = false
+  }
 }
 
 async function syncAll() {
-  const result = props.kind === 'channel' ? await panelApi.syncChannels(null) : await panelApi.syncGroups(null)
-  ElMessage.success(result.message)
-  await load()
+  syncing.value = true
+  try {
+    const result = props.kind === 'channel' ? await panelApi.syncChannels(null) : await panelApi.syncGroups(null)
+    if (result.failures.length > 0) ElMessage.warning(`${result.message}；失败 ${result.failures.length} 个账号`)
+    else ElMessage.success(props.kind === 'group' ? `${result.message}，刷新群组 ${result.totalGroupsSynced} 个` : result.message)
+    await load()
+  } finally {
+    syncing.value = false
+  }
+}
+
+async function syncSelectedGroups() {
+  if (filters.accountId <= 0) {
+    ElMessage.info('请先在上方选择用于检查群组的账号')
+    return
+  }
+  if (selectedIds.value.length === 0) {
+    ElMessage.info('请先勾选要刷新的群组')
+    return
+  }
+
+  syncing.value = true
+  try {
+    const result = await panelApi.syncSelectedGroups(filters.accountId, selectedIds.value)
+    if (result.failures.length > 0) ElMessage.warning(`${result.message}；失败 ${result.failures.length} 个账号`)
+    else ElMessage.success(result.message)
+    await load()
+  } finally {
+    syncing.value = false
+  }
 }
 
 async function copyLink(row: Row) {
   const result = props.kind === 'channel' ? await panelApi.exportChannelLink(row.id) : await panelApi.exportGroupLink(row.id)
   await writeClipboardText(result.link)
+  if (props.kind === 'group') {
+    const group = row as GroupListItem
+    if (group.username) group.publicLink = result.link
+    else group.inviteLink = result.link
+  }
   ElMessage.success('已复制链接')
+}
+
+async function generatePrivateInvite(row: Row) {
+  if (props.kind !== 'group') return
+  const result = await panelApi.exportGroupPrivateInviteLink(row.id)
+  const group = row as GroupListItem
+  group.inviteLink = result.link
+  if (detail.row?.id === row.id) (detail.row as GroupListItem).inviteLink = result.link
+  ElMessage.success('私人邀请链接已生成并缓存')
 }
 
 async function batchCopyLinks() {

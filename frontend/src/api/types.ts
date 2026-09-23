@@ -1013,6 +1013,11 @@ export interface GroupListItem {
   creatorDisplayPhone?: string | null
   categoryId?: number | null
   categoryName?: string | null
+  currentStatus?: string | null
+  currentStatusCheckedAtUtc?: string | null
+  currentStatusAccountId?: number | null
+  publicLink?: string | null
+  inviteLink?: string | null
   createdAt?: string | null
   systemCreatedAtUtc?: string | null
   syncedAt: string

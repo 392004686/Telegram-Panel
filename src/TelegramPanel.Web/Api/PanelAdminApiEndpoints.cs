@@ -229,7 +229,9 @@ public static class PanelAdminApiEndpoints
         secured.MapPost("/groups/batch/admins", BatchSetGroupAdminsAsync);
         secured.MapPost("/groups/batch/kick", BatchKickGroupUsersAsync);
         secured.MapPost("/groups/sync", SyncGroupsAsync);
+        secured.MapPost("/groups/sync-selected", SyncSelectedGroupsAsync);
         secured.MapPost("/groups/{id:int}/export-link", ExportGroupLinkAsync);
+        secured.MapPost("/groups/{id:int}/export-private-link", ExportGroupPrivateInviteLinkAsync);
         secured.MapPost("/groups/{id:int}/leave", LeaveGroupAsync);
         secured.MapPost("/groups/{id:int}/disband", DisbandGroupAsync);
         secured.MapPost("/groups/{id:int}/transfer-owner", TransferGroupOwnerAsync);
@@ -4055,6 +4057,23 @@ public static class PanelAdminApiEndpoints
         return Results.Ok(ToDto(await dataSync.SyncActiveAccountGroupsOnlyAsync(cancellationToken), null));
     }
 
+    private static async Task<IResult> SyncSelectedGroupsAsync(
+        SyncSelectedGroupsRequestDto request,
+        DataSyncService dataSync,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var summary = await dataSync.SyncSelectedGroupsOnlyAsync(request.AccountId, request.GroupIds, cancellationToken);
+            var message = $"已检查 {summary.RequestedGroups} 个所选群组：账号可见 {summary.VisibleGroups} 个，账号不可见 {summary.NotVisibleGroups} 个";
+            return Results.Ok(new SyncResultDto(null, 1, 1, 0, summary.VisibleGroups, Array.Empty<SyncFailureDto>(), message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new OperationResultDto(false, ex.Message));
+        }
+    }
+
     private static async Task<IResult> SetChannelGroupAsync(
         int id,
         SetCategoryRequestDto request,
@@ -4532,6 +4551,26 @@ public static class PanelAdminApiEndpoints
         if (accountId is not > 0)
             return Results.BadRequest(new OperationResultDto(false, "该群组暂无可用执行账号"));
         var inviteLink = await groupService.ExportJoinLinkAsync(accountId.Value, group.TelegramId);
+        await groupManagement.UpdateGroupJoinLinksAsync(group.Id, group.PublicLink, inviteLink);
+        return Results.Ok(new LinkResultDto(inviteLink));
+    }
+
+    private static async Task<IResult> ExportGroupPrivateInviteLinkAsync(
+        int id,
+        GroupManagementService groupManagement,
+        IGroupService groupService)
+    {
+        var group = await groupManagement.GetGroupAsync(id);
+        if (group == null)
+            return Results.NotFound(new OperationResultDto(false, "群组不存在"));
+        if (!string.IsNullOrWhiteSpace(group.InviteLink))
+            return Results.Ok(new LinkResultDto(group.InviteLink));
+
+        var accountId = await groupManagement.ResolveExecuteAccountIdAsync(group);
+        if (accountId is not > 0)
+            return Results.BadRequest(new OperationResultDto(false, "该群组暂无可用执行账号"));
+
+        var inviteLink = await groupService.ExportPrivateInviteLinkAsync(accountId.Value, group.TelegramId);
         await groupManagement.UpdateGroupJoinLinksAsync(group.Id, group.PublicLink, inviteLink);
         return Results.Ok(new LinkResultDto(inviteLink));
     }
@@ -9384,6 +9423,7 @@ public sealed record TransferOwnerRequestDto(string? Target, string? Password, i
 public sealed record SaveSimpleCategoryRequestDto(string? Name, string? Description);
 public sealed record SaveResourceAssignmentsRequestDto(IReadOnlyList<int> ScopeIds, IReadOnlyList<int> SelectedIds);
 public sealed record SyncChatsRequestDto(int? AccountId);
+public sealed record SyncSelectedGroupsRequestDto(int AccountId, IReadOnlyList<int>? GroupIds);
 public sealed record SyncFailureDto(int AccountId, string Phone, string Error);
 public sealed record SyncResultDto(
     int? TaskId,
