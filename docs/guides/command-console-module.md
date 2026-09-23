@@ -36,21 +36,42 @@ Content-Type: application/json
 {"command":"group.invite account=2 group=123456 usernames=\"@alice,@bob\" delay=2000"}
 ```
 
-支持命令：
+示例命令（每行上方是用途和参数说明；示例中的 ID 需要替换成你项目里的真实 ID）：
 
 ```text
+# 读取账号数据并同步到面板；会实际请求 Telegram
 account.sync account=2
+
+# 用账号 2 打开公开群组/频道链接或邀请链接；会实际加入目标
 chat.join account=2 target=https://t.me/example
+
+# 刷新账号 2 可见的群组列表；refresh=true 表示请求最新数据
 group.list account=2 refresh=true
+
+# 将两个客户逐个邀请到 Telegram 群组 123456；delay 单位是毫秒
 group.invite account=2 group=123456 usernames="@alice,@bob" delay=2000
 
+# 查看系统账号 27 的启用、Telegram 状态、API ID 和代理出口
 engagement.account.health accountId=27
+
+# 用账号 27 检查 Telegram 群组 -1001234567890 的成员快照、客户/未知成员数和可复用状态
 engagement.group.inspect accountId=27 telegramGroupId=-1001234567890
+
+# 列出可供账号 27 使用的群组，并显示每个群组可用或跳过的原因
 engagement.group.available accountId=27
+
+# 检查账号 27 在指定群中的成员情况；群内有客户时会拒绝退出清理
 engagement.group.cleanup accountId=27 telegramGroupId=-1001234567890
+
+# 只预览客户分类 8 中最多 3 个待执行客户，不邀请、不加入群组
 engagement.batch.preview accountId=27 telegramGroupId=-1001234567890 customerCategoryId=8 customerLimit=3
+
+# 执行邀请：最多处理 3 个客户，至少确认 1 人入群，邀请间随机间隔 30～60 秒
+# 会实际加入群组、邀请客户、确认成员快照并在结束时尝试退出
 engagement.batch.run accountId=27 telegramGroupId=-1001234567890 customerCategoryId=8 inviteCount=3 minSuccess=1 delayMin=30 delayMax=60
 ```
+
+> PowerShell 中 `#` 是注释。如果通过 HTTP `POST /runs` 提交命令，JSON 的 `command` 字段只放一条命令，不要把上面的 `#` 注释一并放进去。
 
 `delay` 单位为毫秒；`group.invite` 会逐个执行，单个用户失败不会覆盖同批次其他用户结果。权限不在本地预判，以 Telegram 实际 RPC 返回为准。
 
