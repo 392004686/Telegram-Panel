@@ -105,5 +105,5 @@ test('所有复制入口统一使用兼容剪贴板工具', () => {
     assert.match(source, /import \{ writeClipboardText \} from '@\/utils\/clipboard'/)
     assert.doesNotMatch(source, /navigator\.clipboard\.writeText/)
   }
-  assert.equal(viewSources.reduce((count, source) => count + (source.match(/await writeClipboardText\(/g)?.length ?? 0), 0), 4)
+  assert.equal(viewSources.reduce((count, source) => count + (source.match(/await writeClipboardText\(/g)?.length ?? 0), 0), 5)
 })

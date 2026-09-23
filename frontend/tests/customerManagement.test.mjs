@@ -49,3 +49,24 @@ test('客户列表提供批量修改执行状态', () => {
   assert.match(view, /openBatchStatus/)
   assert.match(view, /set_interaction/)
 })
+
+test('客户状态区分销户与受限标记，查询时选择执行账号', () => {
+  const view = read('src/views/Customers.vue')
+  const api = read('../src/TelegramPanel.Web/Api/CustomerManagementApi.cs')
+  assert.match(view, /value="restricted"/)
+  assert.match(view, /value="deleted"/)
+  assert.match(view, /查询账号/)
+  assert.match(view, /refreshCustomerStatus/)
+  assert.match(view, /groupLabel\(g\)/)
+  assert.match(api, /"deleted" => query\.Where\(x => x\.IsDeleted\)/)
+  assert.match(api, /"restricted" => query\.Where\(x => !x\.IsDeleted && x\.IsRestricted\)/)
+})
+
+test('群组批量获取和复制操作使用缓存私人邀请链接', () => {
+  const view = read('src/views/ChatResources.vue')
+  assert.match(view, /批量获取邀请链接/)
+  assert.match(view, /exportGroupPrivateInviteLink\(row\.id\)/)
+  assert.match(view, /group\.inviteLink = result\.link/)
+  assert.match(view, /邀请链接/)
+  assert.match(read('src/views/CustomerCategories.vue'), /row\.name \}\} \(#\{\{ row\.id/)
+})

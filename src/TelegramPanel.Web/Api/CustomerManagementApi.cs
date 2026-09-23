@@ -37,12 +37,21 @@ public static class CustomerManagementApi
         page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
         var query = db.Customers.AsNoTracking().Include(x => x.GroupAssignments).ThenInclude(x => x.CustomerGroup).Include(x => x.BatchItems).AsQueryable();
         if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => (x.Phone != null && x.Phone.Contains(search)) || (x.Username != null && x.Username.Contains(search)) || (x.DisplayName != null && x.DisplayName.Contains(search)) || (x.TelegramUserId != null && x.TelegramUserId.ToString()!.Contains(search)));
-        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.LookupStatus == status);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = status switch
+            {
+                "deleted" => query.Where(x => x.IsDeleted),
+                "restricted" => query.Where(x => !x.IsDeleted && x.IsRestricted),
+                "found" => query.Where(x => !x.IsDeleted && !x.IsRestricted && x.LookupStatus == "found"),
+                _ => query.Where(x => !x.IsDeleted && !x.IsRestricted && x.LookupStatus == status)
+            };
+        }
         if (!string.IsNullOrWhiteSpace(interaction)) query = query.Where(x => x.InteractionStatus == interaction);
         if (groupId.HasValue) query = query.Where(x => x.GroupAssignments.Any(g => g.CustomerGroupId == groupId));
         if (batchId.HasValue) query = query.Where(x => x.BatchItems.Any(b => b.CustomerImportBatchId == batchId));
         var total = await query.CountAsync();
-        var items = await query.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new CustomerDto(x.Id, x.Phone, x.Username, x.TelegramUserId, x.DisplayName, x.Nickname, x.HasPhoto, x.ActivityStatus, x.LastSeenAt, x.IsPremium, x.IsBot, x.IsVerified, x.IsScam, x.IsFake, x.IsDeleted, x.Birthday, x.LookupStatus, x.InteractionStatus, x.Remark, x.LastLookupAt, x.LastDataSyncAt, x.CreatedAt, x.GroupAssignments.Select(g => new NamedDto(g.CustomerGroupId, g.CustomerGroup.Name)).ToList(), x.BatchItems.Select(b => b.CustomerImportBatchId).ToList())).ToListAsync();
+        var items = await query.OrderByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new CustomerDto(x.Id, x.Phone, x.Username, x.TelegramUserId, x.DisplayName, x.Nickname, x.HasPhoto, x.ActivityStatus, x.LastSeenAt, x.IsPremium, x.IsBot, x.IsVerified, x.IsScam, x.IsFake, x.IsDeleted, x.IsRestricted, x.Birthday, x.LookupStatus, x.InteractionStatus, x.Remark, x.LastLookupAt, x.LastDataSyncAt, x.CreatedAt, x.GroupAssignments.Select(g => new NamedDto(g.CustomerGroupId, g.CustomerGroup.Name)).ToList(), x.BatchItems.Select(b => b.CustomerImportBatchId).ToList())).ToListAsync();
         return Results.Ok(new { items, total, page, pageSize });
     }
 
@@ -110,10 +119,18 @@ public static class CustomerManagementApi
 
     internal static void ApplyLookup(Customer customer, AccountTelegramToolsService.UserLookupResult result)
     {
-        if (!result.Found) return; // Account/network/visibility errors belong to the attempt, never the customer profile.
+        if (!result.Found)
+        {
+            customer.LookupStatus = result.Error?.Contains("未找到", StringComparison.OrdinalIgnoreCase) == true
+                || result.Error?.Contains("USERNAME_NOT_OCCUPIED", StringComparison.OrdinalIgnoreCase) == true
+                ? "not_found"
+                : "error";
+            customer.LastLookupAt = DateTime.UtcNow;
+            customer.UpdatedAt = DateTime.UtcNow;
+            return;
+        }
         customer.LookupStatus = "found";
         customer.LastLookupAt = DateTime.UtcNow; customer.UpdatedAt = DateTime.UtcNow;
-        if (!result.Found) return;
         customer.LastDataSyncAt = DateTime.UtcNow;
         customer.TelegramUserId = result.UserId ?? customer.TelegramUserId;
         customer.AccessHash = result.AccessHash ?? customer.AccessHash;
@@ -286,7 +303,7 @@ public static class CustomerManagementApi
     public sealed record NamedDto(int Id, string Name);
     public sealed record CustomerGroupDto(int Id, string Name, string? Description, int CustomerCount, int PendingCustomerCount);
     public sealed record CustomerBatchDto(int Id, string Name, int Total, int Imported, int Duplicates, int Invalid, DateTime CreatedAt);
-    public sealed record CustomerDto(int Id, string? Phone, string? Username, long? TelegramUserId, string? DisplayName, string? Nickname, bool HasPhoto, string ActivityStatus, DateTime? LastSeenAt, bool IsPremium, bool IsBot, bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, string? Birthday, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime? LastDataSyncAt, DateTime CreatedAt, List<NamedDto> Groups, List<int> BatchIds);
+    public sealed record CustomerDto(int Id, string? Phone, string? Username, long? TelegramUserId, string? DisplayName, string? Nickname, bool HasPhoto, string ActivityStatus, DateTime? LastSeenAt, bool IsPremium, bool IsBot, bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, bool IsRestricted, string? Birthday, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime? LastDataSyncAt, DateTime CreatedAt, List<NamedDto> Groups, List<int> BatchIds);
     public sealed record CustomerDetailDto(int Id, string? Phone, string? Username, long? TelegramUserId, long? AccessHash, string? DisplayName, string? Nickname, bool HasPhoto, string ActivityStatus, DateTime? LastSeenAt, bool IsPremium, bool IsBot, bool IsVerified, bool IsScam, bool IsFake, bool IsDeleted, bool IsRestricted, string? Birthday, string LookupStatus, string InteractionStatus, string? Remark, DateTime? LastLookupAt, DateTime? LastDataSyncAt, DateTime? LastInteractionAt, DateTime CreatedAt, DateTime UpdatedAt, List<NamedDto> Groups, List<NamedDto> Batches);
 }
 

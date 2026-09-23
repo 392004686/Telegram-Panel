@@ -8,7 +8,7 @@
         <el-form-item><el-button type="primary" :loading="creating" :disabled="!createForm.name.trim()" @click="createGroup">添加分类</el-button></el-form-item>
       </el-form>
       <el-table v-loading="loading" :data="groups" stripe>
-        <el-table-column prop="name" label="分类名称" min-width="180" /><el-table-column prop="description" label="描述" min-width="260"><template #default="{ row }">{{ row.description || '-' }}</template></el-table-column><el-table-column prop="customerCount" label="客户数量" width="110" />
+        <el-table-column label="分类名称" min-width="180"><template #default="{ row }">{{ row.name }} (#{{ row.id }})</template></el-table-column><el-table-column prop="description" label="描述" min-width="260"><template #default="{ row }">{{ row.description || '-' }}</template></el-table-column><el-table-column prop="customerCount" label="客户数量" width="110" />
         <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openEdit(row)">编辑</el-button><el-button link type="danger" @click="removeGroup(row)">删除</el-button></template></el-table-column>
       </el-table>
     </el-card>

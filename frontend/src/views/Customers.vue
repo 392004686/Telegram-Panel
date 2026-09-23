@@ -6,13 +6,18 @@
     <el-card shadow="never" class="page-card">
       <div class="filter-row">
         <el-select v-model="filters.groupId" clearable placeholder="全部分类" class="filter">
-          <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id"/>
+          <el-option v-for="g in groups" :key="g.id" :label="groupLabel(g)" :value="g.id"/>
+        </el-select>
+        <el-select v-model="lookupAccountId" clearable placeholder="查询账号" class="filter">
+          <el-option v-for="account in accounts" :key="account.id" :label="accountLabel(account)" :value="account.id"/>
         </el-select>
         <el-select v-model="filters.status" clearable placeholder="查询状态" class="filter">
           <el-option label="待查询" value="pending"/>
           <el-option label="已确认" value="found"/>
           <el-option label="未确认" value="not_found"/>
           <el-option label="查询异常" value="error"/>
+          <el-option label="受限/冻结标记" value="restricted"/>
+          <el-option label="已销户" value="deleted"/>
         </el-select>
         <el-select v-model="filters.interaction" clearable placeholder="执行状态" class="filter">
           <el-option label="未执行" value="uncontacted"/>
@@ -63,10 +68,10 @@
         <el-table-column label="头像" width="75"><template #default="{row}">{{yesNo(row.hasPhoto)}}</template></el-table-column>
         <el-table-column label="活跃状态" min-width="210"><template #default="{row}">{{activity(row)}}</template></el-table-column>
         <el-table-column label="Premium" width="92"><template #default="{row}">{{yesNo(row.isPremium)}}</template></el-table-column>
-        <el-table-column label="查询状态" width="100"><template #default="{row}"><el-tag :type="statusType(row.lookupStatus)">{{statusLabel(row.lookupStatus)}}</el-tag></template></el-table-column>
+        <el-table-column label="查询状态" min-width="130"><template #default="{row}"><el-tooltip v-if="row.isRestricted && !row.isDeleted" content="Telegram 用户资料标记为受限；这不一定等于整号冻结"><el-tag :type="statusType(customerStatus(row))">{{statusLabel(customerStatus(row))}}</el-tag></el-tooltip><el-tag v-else :type="statusType(customerStatus(row))">{{statusLabel(customerStatus(row))}}</el-tag></template></el-table-column>
         <el-table-column label="执行状态" width="100"><template #default="{row}"><el-tag :type="row.interactionStatus==='contacted'?'success':'info'">{{interactionLabel(row.interactionStatus)}}</el-tag></template></el-table-column>
-        <el-table-column label="分类" min-width="130"><template #default="{row}"><el-tag v-for="g in row.groups" :key="g.id" class="tag" effect="plain">{{g.name}}</el-tag><span v-if="!row.groups.length">未分类</span></template></el-table-column>
-        <el-table-column label="操作" width="160" fixed="right"><template #default="{row}"><div class="row-actions"><el-button link type="primary" @click="showDetail(row.id)">查看详情</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></div></template></el-table-column>
+        <el-table-column label="分类" min-width="155"><template #default="{row}"><el-tag v-for="g in row.groups" :key="g.id" class="tag" effect="plain">{{groupLabel(g)}}</el-tag><span v-if="!row.groups.length">未分类</span></template></el-table-column>
+        <el-table-column label="操作" width="255" fixed="right"><template #default="{row}"><div class="row-actions"><el-button link type="primary" :disabled="!lookupAccountId || lookupBusyId === row.id" :loading="lookupBusyId === row.id" @click="refreshCustomerStatus(row)">查询状态</el-button><el-button link type="primary" @click="showDetail(row.id)">查看详情</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></div></template></el-table-column>
       </el-table>
       <div class="pager"><span>共 {{total}} 条</span><el-pagination v-model:current-page="filters.page" v-model:page-size="filters.pageSize" layout="sizes, prev, pager, next" :total="total" :page-sizes="[20,50,100]" @change="loadCustomers"/></div>
     </el-card>
@@ -74,7 +79,7 @@
       <el-alert title="每行一个手机号或 @用户名；手机号允许空格和可选开头 +。" type="info" :closable="false"/>
       <el-form label-position="top" class="dialog-form">
         <el-form-item label="批次名称"><el-input v-model="importDialog.batchName" placeholder="留空自动生成"/></el-form-item>
-        <el-form-item label="客户分类"><el-select v-model="importDialog.groupId" clearable class="full"><el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id"/></el-select></el-form-item>
+        <el-form-item label="客户分类"><el-select v-model="importDialog.groupId" clearable class="full"><el-option v-for="g in groups" :key="g.id" :label="groupLabel(g)" :value="g.id"/></el-select></el-form-item>
         <el-form-item label="手机号 / @用户名"><el-input v-model="importDialog.values" type="textarea" :rows="12" placeholder="+1 212 555 0123&#10;@username"/></el-form-item>
       </el-form>
       <template #footer><el-button @click="importDialog.visible=false">取消</el-button><el-button type="primary" :loading="importDialog.saving" @click="submitImport">导入</el-button></template>
@@ -84,7 +89,7 @@
       <el-descriptions v-else-if="detailDialog.data" :column="2" border>
         <el-descriptions-item label="用户 ID">{{detailDialog.data.telegramUserId||'-'}}</el-descriptions-item>
         <el-descriptions-item label="姓名">{{detailDialog.data.displayName||'-'}}</el-descriptions-item>
-        <el-descriptions-item label="查询状态">{{statusLabel(detailDialog.data.lookupStatus)}}</el-descriptions-item>
+        <el-descriptions-item label="查询状态">{{statusLabel(customerStatus(detailDialog.data))}}</el-descriptions-item>
         <el-descriptions-item label="执行状态">{{interactionLabel(detailDialog.data.interactionStatus)}}</el-descriptions-item>
         <el-descriptions-item label="用户名">{{detailDialog.data.username?'@'+detailDialog.data.username:'-'}}</el-descriptions-item>
         <el-descriptions-item label="手机号">{{detailDialog.data.phone||'-'}}</el-descriptions-item>
@@ -93,7 +98,7 @@
       </el-descriptions>
     </el-dialog>
     <el-dialog v-model="batchGroup.visible" title="批量修改客户分类" width="440px">
-      <el-select v-model="batchGroup.groupId" clearable class="full" placeholder="清空选择表示未分类"><el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id"/></el-select>
+      <el-select v-model="batchGroup.groupId" clearable class="full" placeholder="清空选择表示未分类"><el-option v-for="g in groups" :key="g.id" :label="groupLabel(g)" :value="g.id"/></el-select>
       <template #footer><el-button @click="batchGroup.visible=false">取消</el-button><el-button type="primary" :loading="batchGroup.saving" @click="applyBatchGroup">保存</el-button></template>
     </el-dialog>
     <el-dialog v-model="batchStatus.visible" title="批量修改执行状态" width="440px">
@@ -111,7 +116,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { panelApi } from '@/api/panel'
-import type { CustomerDetail, CustomerGroupOption, CustomerImportBatch, CustomerItem } from '@/api/types'
+import type { AccountListItem, CustomerDetail, CustomerGroupOption, CustomerImportBatch, CustomerItem } from '@/api/types'
 import { formatTime } from '@/utils/format'
 
 const loading = ref(false)
@@ -120,6 +125,9 @@ const rows = ref<CustomerItem[]>([])
 const total = ref(0)
 const groups = ref<CustomerGroupOption[]>([])
 const batches = ref<CustomerImportBatch[]>([])
+const accounts = ref<AccountListItem[]>([])
+const lookupAccountId = ref<number | undefined>()
+const lookupBusyId = ref<number | null>(null)
 const selectedIds = ref<number[]>([])
 const customerTable = ref()
 const filters = reactive({ page: 1, pageSize: 20, search: '', status: '', interaction: '', groupId: undefined as number | undefined, batchId: undefined as number | undefined })
@@ -128,10 +136,13 @@ const detailDialog = reactive({ visible: false, loading: false, data: null as Cu
 const batchGroup = reactive({ visible: false, saving: false, groupId: undefined as number | undefined })
 const batchStatus = reactive({ visible: false, saving: false, status: 'uncontacted' as 'contacted' | 'uncontacted' })
 
-const statusLabel = (v: string) => ({ pending: '待查询', found: '已确认', not_found: '未确认', error: '查询异常' }[v] || v)
-const statusType = (v: string) => (v === 'found' ? 'success' : v === 'pending' ? 'info' : 'warning')
+const statusLabel = (v: string) => ({ pending: '待查询', found: '已确认', not_found: '未确认', error: '查询异常', restricted: '受限/冻结标记', deleted: '已销户' }[v] || v)
+const statusType = (v: string) => (v === 'found' ? 'success' : v === 'pending' ? 'info' : v === 'deleted' || v === 'restricted' ? 'danger' : 'warning')
 const interactionLabel = (v: string) => (v === 'contacted' ? '已沟通' : '未执行')
 const yesNo = (v: boolean) => v ? '有' : '无'
+const groupLabel = (group: Pick<CustomerGroupOption, 'id' | 'name'>) => `${group.name} (#${group.id})`
+const accountLabel = (account: AccountListItem) => `账号 #${account.displayNumber} · ${account.phone || account.displayPhone}`
+const customerStatus = (row: CustomerItem | CustomerDetail) => row.isDeleted ? 'deleted' : row.isRestricted ? 'restricted' : row.lookupStatus
 const activity = (r: CustomerItem | CustomerDetail) => {
   const statusMap: Record<string, string> = { online: '当前在线', offline: '离线', recently: '最近上线', last_week: '一周内上线', last_month: '一个月内上线', unknown: '状态未知/不可见' }
   const label = statusMap[r.activityStatus] || '状态未知/不可见'
@@ -152,9 +163,14 @@ async function loadCustomers() {
   }
 }
 async function loadMeta() {
-  const [g, b] = await Promise.allSettled([panelApi.customerGroups(), panelApi.customerImportBatches()])
+  const [g, b, a] = await Promise.allSettled([
+    panelApi.customerGroups(),
+    panelApi.customerImportBatches(),
+    panelApi.accounts({ page: 1, pageSize: 500 }),
+  ])
   if (g.status === 'fulfilled') groups.value = g.value
   if (b.status === 'fulfilled') batches.value = b.value
+  if (a.status === 'fulfilled') accounts.value = a.value.items.filter(x => x.isActive)
 }
 function loadAll() { loadCustomers(); loadMeta() }
 function onSelection(s: CustomerItem[]) { selectedIds.value = s.map(x => x.id) }
@@ -198,6 +214,16 @@ async function showDetail(id: number) {
   detailDialog.visible = true
   detailDialog.loading = true
   try { detailDialog.data = await panelApi.customer(id) } finally { detailDialog.loading = false }
+}
+async function refreshCustomerStatus(row: CustomerItem) {
+  if (!lookupAccountId.value) return ElMessage.warning('请先选择用于查询的账号')
+  lookupBusyId.value = row.id
+  try {
+    const result = await panelApi.lookupCustomer(row.id, lookupAccountId.value)
+    if (result.found) ElMessage.success(`客户状态已更新：${result.isDeleted ? '已销户' : result.isRestricted ? '受限/冻结标记' : statusLabel('found')}`)
+    else ElMessage.warning(result.error || '本次查询未能确认客户状态')
+    await loadCustomers()
+  } finally { lookupBusyId.value = null }
 }
 async function remove(row: CustomerItem) {
   await ElMessageBox.confirm(`删除客户 #${row.id}？`, '确认删除', { type: 'warning' })

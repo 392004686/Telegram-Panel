@@ -20,7 +20,7 @@
         <el-select v-model="filters.categoryId" class="filter" :placeholder="`${kindName}分类`" @change="reloadFirst">
           <el-option label="全部分类" :value="-1" />
           <el-option label="未分类" :value="0" />
-          <el-option v-for="category in categories" :key="category.id" :label="category.name" :value="category.id" />
+          <el-option v-for="category in categories" :key="category.id" :label="categoryLabel(category)" :value="category.id" />
         </el-select>
         <el-input v-model="filters.search" class="search" :placeholder="`搜索${kindName}...`" clearable @input="debouncedLoad" />
       </div>
@@ -47,7 +47,8 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item :disabled="selectedIds.length === 0" @click="openChatInvite(selectedIds)">批量邀请（已选）</el-dropdown-item>
-              <el-dropdown-item :disabled="selectedIds.length === 0" @click="batchCopyLinks">批量复制{{ linkName }}（已选）</el-dropdown-item>
+              <el-dropdown-item v-if="kind === 'group'" :disabled="selectedIds.length === 0 || loading" @click="batchGetInviteLinks">批量获取并复制邀请链接（已选）</el-dropdown-item>
+              <el-dropdown-item v-else :disabled="selectedIds.length === 0" @click="batchCopyLinks">批量复制邀请链接（已选）</el-dropdown-item>
               <el-dropdown-item :disabled="selectedIds.length === 0" @click="batchExportInvites">批量导出{{ linkName }}（已选）</el-dropdown-item>
               <el-dropdown-item :disabled="selectedIds.length === 0" @click="openChatAdmins(selectedIds)">批量设置管理员（已选）</el-dropdown-item>
               <el-dropdown-item :disabled="selectedIds.length === 0" @click="openBatchCategory">批量修改分类（已选）</el-dropdown-item>
@@ -68,7 +69,7 @@
         <span v-else class="muted">{{ kindName }} ({{ total }})</span>
       </div>
 
-      <el-table ref="tableRef" v-loading="loading" :data="rows" stripe row-key="id" @selection-change="onSelectionChange">
+      <el-table ref="tableRef" v-loading="loading" :data="rows" :fit="kind !== 'group'" stripe row-key="id" :class="{ 'resource-table': true, 'group-resource-table': kind === 'group' }" @selection-change="onSelectionChange">
         <el-table-column type="selection" width="46" />
         <el-table-column v-if="isColumnVisible('title')" :label="`${kindName}名称`" min-width="240">
           <template #default="{ row }">
@@ -109,7 +110,7 @@
             <span v-else class="muted">无公开用户名</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="kind === 'group' && isColumnVisible('inviteLink')" label="私人邀请链接" min-width="180">
+        <el-table-column v-if="kind === 'group' && isColumnVisible('inviteLink')" label="邀请链接" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <el-link v-if="groupInviteLink(row)" :href="groupInviteLink(row) || undefined" target="_blank" type="primary">
               {{ compactLink(groupInviteLink(row) || '') }}
@@ -148,7 +149,7 @@
                     <el-dropdown-item @click="openChatKick([row.id])">踢人</el-dropdown-item>
                     <el-dropdown-item @click="openSingleCategory(row)">修改分类</el-dropdown-item>
                     <el-dropdown-item @click="showSystemAccounts(row)">本系统账号</el-dropdown-item>
-                    <el-dropdown-item @click="copyLink(row)">复制链接</el-dropdown-item>
+                    <el-dropdown-item @click="copyLink(row)">{{ kind === 'group' ? '复制邀请链接' : '复制链接' }}</el-dropdown-item>
                     <el-dropdown-item divided @click="openTransferOwner(row)">转让所有权</el-dropdown-item>
                     <el-dropdown-item @click="leaveOne(row)">退出{{ kindName }}</el-dropdown-item>
                     <el-dropdown-item @click="disbandOne(row)">解散{{ kindName }}</el-dropdown-item>
@@ -191,7 +192,7 @@
             <el-link v-if="groupPublicLink(detail.row)" :href="groupPublicLink(detail.row) || undefined" target="_blank">{{ groupPublicLink(detail.row) }}</el-link>
             <span v-else>-</span>
           </el-descriptions-item>
-          <el-descriptions-item label="私人邀请链接">
+          <el-descriptions-item label="邀请链接">
             <el-link v-if="groupInviteLink(detail.row)" :href="groupInviteLink(detail.row) || undefined" target="_blank">{{ groupInviteLink(detail.row) }}</el-link>
             <el-button v-else link type="primary" @click="generatePrivateInvite(detail.row)">生成并缓存</el-button>
           </el-descriptions-item>
@@ -718,7 +719,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const kindName = computed(() => (props.kind === 'channel' ? '频道' : '群组'))
-const linkName = computed(() => (props.kind === 'channel' ? '邀请链接' : '加入链接'))
+const linkName = computed(() => '邀请链接')
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -754,7 +755,7 @@ const chatResourceColumns: ColumnVisibilityOption[] = [
     ? [
         { key: 'currentStatus', label: '当前状态' },
         { key: 'publicLink', label: '公开链接' },
-        { key: 'inviteLink', label: '私人邀请链接' },
+        { key: 'inviteLink', label: '邀请链接' },
       ]
     : []),
   { key: 'currentRole', label: '当前账号角色' },
@@ -1024,6 +1025,10 @@ function rowCategoryLabel(row: Row) {
   return props.kind === 'group' && id ? `${name} (#${id})` : name
 }
 
+function categoryLabel(category: { id: number; name: string }) {
+  return props.kind === 'group' ? `${category.name} (#${category.id})` : category.name
+}
+
 function groupStatusText(row: Row) {
   return props.kind === 'group' ? (row as GroupListItem).currentStatus || '未检查' : '-'
 }
@@ -1159,14 +1164,13 @@ async function syncSelectedGroups() {
 }
 
 async function copyLink(row: Row) {
-  const result = props.kind === 'channel' ? await panelApi.exportChannelLink(row.id) : await panelApi.exportGroupLink(row.id)
+  const result = props.kind === 'channel' ? await panelApi.exportChannelLink(row.id) : await panelApi.exportGroupPrivateInviteLink(row.id)
   await writeClipboardText(result.link)
   if (props.kind === 'group') {
     const group = row as GroupListItem
-    if (group.username) group.publicLink = result.link
-    else group.inviteLink = result.link
+    group.inviteLink = result.link
   }
-  ElMessage.success('已复制链接')
+  ElMessage.success(props.kind === 'group' ? '已复制邀请链接' : '已复制链接')
 }
 
 async function generatePrivateInvite(row: Row) {
@@ -1176,6 +1180,37 @@ async function generatePrivateInvite(row: Row) {
   group.inviteLink = result.link
   if (detail.row?.id === row.id) (detail.row as GroupListItem).inviteLink = result.link
   ElMessage.success('私人邀请链接已生成并缓存')
+}
+
+async function batchGetInviteLinks() {
+  if (props.kind !== 'group' || selectedRows.value.length === 0) return
+  await ElMessageBox.confirm(
+    `将为 ${selectedRows.value.length} 个已选群组获取邀请链接；已缓存的链接会直接复用，未缓存的会尝试生成并保存。继续吗？`,
+    '批量获取邀请链接',
+    { type: 'info', confirmButtonText: '获取链接', cancelButtonText: '取消' },
+  )
+
+  loading.value = true
+  const lines = ['# 群组ID\t群组名称\t邀请链接']
+  let ok = 0
+  let failed = 0
+  try {
+    for (const row of selectedRows.value) {
+      try {
+        const result = await panelApi.exportGroupPrivateInviteLink(row.id)
+        ;(row as GroupListItem).inviteLink = result.link
+        lines.push(`${row.telegramId}\t${row.title}\t${result.link}`)
+        ok++
+      } catch (error) {
+        lines.push(`${row.telegramId}\t${row.title}\t获取失败：${extractErrorMessage(error)}`)
+        failed++
+      }
+    }
+    await writeClipboardText(lines.join('\n'))
+    showOperationSummary('邀请链接已复制并写入剪贴板', ok, failed, 0)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function batchCopyLinks() {
@@ -2078,6 +2113,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .rights-grid {
@@ -2098,4 +2135,11 @@ onMounted(async () => {
 .message-rule-card{border:1px solid var(--el-border-color);border-radius:8px;padding:12px;margin-bottom:12px}
 .message-rule-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .full{width:100%}
+.group-resource-table :deep(.el-table__fixed-right),
+.group-resource-table :deep(.el-table__fixed) { height: 100% !important; background: var(--el-bg-color); }
+.group-resource-table :deep(.el-table__fixed-right .el-table__fixed-body-wrapper),
+.group-resource-table :deep(.el-table__fixed .el-table__fixed-body-wrapper) { background: var(--el-bg-color); }
+.group-resource-table :deep(.el-table__fixed-right .el-table__cell),
+.group-resource-table :deep(.el-table__fixed .el-table__cell) { background-color: var(--el-table-tr-bg-color); }
+.group-resource-table :deep(.el-table__fixed-right-patch) { background: var(--el-bg-color); }
 </style>
