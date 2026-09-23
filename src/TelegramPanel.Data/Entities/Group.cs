@@ -12,6 +12,11 @@ public class Group
     public string? Username { get; set; }
     public int MemberCount { get; set; }
     public string? About { get; set; }
+    public string CurrentStatus { get; set; } = "未知";
+    public DateTime? CurrentStatusCheckedAtUtc { get; set; }
+    public int? CurrentStatusAccountId { get; set; }
+    public string? PublicLink { get; set; }
+    public string? InviteLink { get; set; }
     public int? CreatorAccountId { get; set; }
     public int? CategoryId { get; set; }
     public DateTime? CreatedAt { get; set; }

@@ -316,6 +316,9 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Username).HasMaxLength(100);
             entity.Property(e => e.About).HasMaxLength(1000);
+            entity.Property(e => e.CurrentStatus).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.PublicLink).HasMaxLength(512);
+            entity.Property(e => e.InviteLink).HasMaxLength(512);
             entity.Property(e => e.SystemCreatedAtUtc);
 
             entity.HasIndex(e => e.TelegramId).IsUnique();

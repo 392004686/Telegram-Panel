@@ -1293,7 +1293,9 @@ var groupInvitesDownload = app.MapGet("/downloads/groups/invites.txt", async (
         }
 
         var executeAccountId = await groupManagement.ResolveExecuteAccountIdAsync(group, preferredAccountId: preferredAccountId);
-        if (executeAccountId is not > 0)
+        if (string.IsNullOrWhiteSpace(group.Username)
+            && string.IsNullOrWhiteSpace(group.InviteLink)
+            && executeAccountId is not > 0)
         {
             lines.Add($"{telegramId}\t{group.Title}\t(无可用执行账号)");
             continue;
@@ -1301,7 +1303,13 @@ var groupInvitesDownload = app.MapGet("/downloads/groups/invites.txt", async (
 
         try
         {
-            var link = await groupService.ExportJoinLinkAsync(executeAccountId.Value, telegramId);
+            var link = !string.IsNullOrWhiteSpace(group.Username)
+                ? group.PublicLink ?? $"https://t.me/{group.Username.Trim().TrimStart('@')}"
+                : group.InviteLink ?? await groupService.ExportJoinLinkAsync(executeAccountId!.Value, telegramId);
+            if (!string.IsNullOrWhiteSpace(group.Username))
+                await groupManagement.UpdateGroupJoinLinksAsync(group.Id, link, null);
+            else if (string.IsNullOrWhiteSpace(group.InviteLink))
+                await groupManagement.UpdateGroupJoinLinksAsync(group.Id, group.PublicLink, link);
             lines.Add($"{telegramId}\t{group.Title}\t{link}");
         }
         catch

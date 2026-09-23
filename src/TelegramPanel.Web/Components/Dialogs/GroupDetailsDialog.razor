@@ -29,11 +29,42 @@
                         <MudText Typo="Typo.body2"><strong>TelegramId：</strong>@group.TelegramId</MudText>
                         <MudText Typo="Typo.body2"><strong>用户名：</strong>@(string.IsNullOrWhiteSpace(group.Username) ? "（私密）" : "@" + group.Username)</MudText>
                         <MudText Typo="Typo.body2"><strong>成员数：</strong>@group.MemberCount</MudText>
+                        <MudText Typo="Typo.body2"><strong>当前状态：</strong>@(string.IsNullOrWhiteSpace(group.CurrentStatus) ? "未知" : group.CurrentStatus)</MudText>
+                        <MudText Typo="Typo.body2"><strong>状态检查时间：</strong><PanelTime Value="group.CurrentStatusCheckedAtUtc" Format="yyyy-MM-dd HH:mm:ss" EmptyText="（尚未检查）" /></MudText>
+                        @if (group.CurrentStatusAccountId.HasValue)
+                        {
+                            <MudText Typo="Typo.body2"><strong>状态检查账号：</strong>@group.CurrentStatusAccountId</MudText>
+                        }
                     </MudItem>
                     <MudItem xs="12" md="6">
                         <MudText Typo="Typo.body2"><strong>创建者：</strong>@creatorDisplay</MudText>
                         <MudText Typo="Typo.body2"><strong>创建时间：</strong><PanelTime Value="group.CreatedAt" Format="yyyy-MM-dd HH:mm:ss" EmptyText="（未知）" /></MudText>
                         <MudText Typo="Typo.body2"><strong>最后同步：</strong><PanelTime Value="group.SyncedAt" Format="yyyy-MM-dd HH:mm:ss" /></MudText>
+                    </MudItem>
+                </MudGrid>
+
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body2"><strong>公开链接：</strong></MudText>
+                        @if (!string.IsNullOrWhiteSpace(group.PublicLink))
+                        {
+                            <MudLink Href="@group.PublicLink" Target="_blank">@group.PublicLink</MudLink>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">（无公开用户名）</MudText>
+                        }
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body2"><strong>私人邀请链接：</strong></MudText>
+                        @if (!string.IsNullOrWhiteSpace(group.InviteLink))
+                        {
+                            <MudLink Href="@group.InviteLink" Target="_blank">@group.InviteLink</MudLink>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">（尚未生成；首次复制时生成并缓存）</MudText>
+                        }
                     </MudItem>
                 </MudGrid>
 
@@ -51,7 +82,7 @@
                     <MudText Typo="Typo.h6">管理员</MudText>
                     <MudSpacer />
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
-                               Disabled="@adminsLoading" OnClick="LoadAdmins">
+                               Disabled="@(adminsLoading || adminAccountId is not > 0)" OnClick="LoadAdmins">
                         刷新
                     </MudButton>
                 </MudStack>
@@ -62,7 +93,7 @@
                 }
                 else if (admins.Count == 0)
                 {
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">暂无管理员数据（或无权限获取）</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@adminsMessage</MudText>
                 }
                 else
                 {
@@ -152,6 +183,8 @@
     private Group? group;
     private string creatorDisplay = "-";
     private int? executeAccountId;
+    private int? adminAccountId;
+    private string adminsMessage = "暂无管理员数据（或无权限获取）";
 
     private bool adminsLoading;
     private List<ChannelAdminInfo> admins = new();
@@ -161,8 +194,8 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadGroup();
-        await LoadAdmins();
         await LoadSystemAccounts();
+        await LoadAdmins();
     }
 
     private async Task LoadGroup()
@@ -203,22 +236,29 @@
         if (group == null)
             return;
 
-        if (executeAccountId is not > 0)
+        var adminMembership = systemAccounts
+            .Where(x => x.Account?.IsActive == true && (x.IsCreator || x.IsAdmin))
+            .OrderByDescending(x => x.IsCreator)
+            .ThenBy(x => x.AccountId)
+            .FirstOrDefault();
+        adminAccountId = adminMembership?.AccountId;
+        if (adminAccountId is not > 0)
         {
             admins.Clear();
-            Snackbar.Add("该群组暂无可用的执行账号（请先同步群组关联账号，或确保至少有一个账号是管理员）", Severity.Warning);
+            adminsMessage = "没有已同步的可用管理员账号；群组详情和本系统账号列表仍可查看。请先刷新群组同步。";
             return;
         }
 
         adminsLoading = true;
         try
         {
-            admins = await GroupService.GetAdminsAsync(executeAccountId.Value, group.TelegramId);
+            admins = await GroupService.GetAdminsAsync(adminAccountId.Value, group.TelegramId);
+            adminsMessage = admins.Count == 0 ? "Telegram 未返回管理员数据（可能无权读取或群组暂无可显示数据）" : string.Empty;
         }
         catch (Exception ex)
         {
             admins.Clear();
-            Snackbar.Add($"加载管理员失败：{ex.Message}", Severity.Error);
+            adminsMessage = $"读取管理员失败：{ex.Message}；群组详情仍可正常查看。";
         }
         finally
         {
@@ -262,15 +302,28 @@
         if (group == null)
             return;
 
-        if (executeAccountId is not > 0)
-        {
-            Snackbar.Add("该群组暂无可用的执行账号，无法导出链接（请先同步群组关联账号）", Severity.Warning);
-            return;
-        }
-
         try
         {
-            var link = await GroupService.ExportJoinLinkAsync(executeAccountId.Value, group.TelegramId);
+            string link;
+            if (!string.IsNullOrWhiteSpace(group.Username))
+            {
+                link = group.PublicLink ?? $"https://t.me/{group.Username.Trim().TrimStart('@')}";
+                group.PublicLink = link;
+                await GroupManagement.UpdateGroupJoinLinksAsync(group.Id, link, null);
+            }
+            else if (!string.IsNullOrWhiteSpace(group.InviteLink))
+                link = group.InviteLink;
+            else
+            {
+                if (executeAccountId is not > 0)
+                {
+                    Snackbar.Add("生成私人邀请链接需要已关联的创建者/管理员账号；可先刷新群组关联账号", Severity.Warning);
+                    return;
+                }
+                link = await GroupService.ExportJoinLinkAsync(executeAccountId.Value, group.TelegramId);
+                group.InviteLink = link;
+                await GroupManagement.UpdateGroupJoinLinksAsync(group.Id, group.PublicLink, link);
+            }
             await JS.InvokeVoidAsync("telegramPanel.copyText", link);
             Snackbar.Add("已复制链接", Severity.Success);
         }

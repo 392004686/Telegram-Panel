@@ -3445,9 +3445,9 @@ public static class PanelAdminApiEndpoints
         if (group == null)
             return Results.NotFound(new OperationResultDto(false, "群组不存在"));
 
-        var accountId = await groupManagement.ResolveExecuteAccountIdAsync(group);
+        var accountId = await groupManagement.ResolveAdminAccountIdAsync(group.Id);
         if (accountId is not > 0)
-            return Results.BadRequest(new OperationResultDto(false, "该群组暂无可用执行账号（请先同步群组关联账号，或确保至少有一个账号是管理员）"));
+            return Results.Ok(Array.Empty<ChatAdminDto>());
 
         try
         {
@@ -4050,10 +4050,9 @@ public static class PanelAdminApiEndpoints
     private static async Task<IResult> SyncGroupsAsync(SyncChatsRequestDto request, DataSyncService dataSync, CancellationToken cancellationToken)
     {
         if (request.AccountId is > 0)
-            return Results.Ok(ToDto(await dataSync.SyncAccountAsync(request.AccountId.Value, cancellationToken), null));
+            return Results.Ok(ToDto(await dataSync.SyncAccountGroupsOnlyAsync(request.AccountId.Value, cancellationToken), null));
 
-        var taskId = await dataSync.StartAllActiveAccountsTrackedInBackgroundAsync("vue_groups_sync", cancellationToken);
-        return Results.Ok(new SyncResultDto(taskId, 0, 0, 0, 0, Array.Empty<SyncFailureDto>(), "同步任务已提交，请在任务中心查看进度"));
+        return Results.Ok(ToDto(await dataSync.SyncActiveAccountGroupsOnlyAsync(cancellationToken), null));
     }
 
     private static async Task<IResult> SetChannelGroupAsync(
@@ -4520,10 +4519,21 @@ public static class PanelAdminApiEndpoints
         var group = await groupManagement.GetGroupAsync(id);
         if (group == null)
             return Results.NotFound(new OperationResultDto(false, "群组不存在"));
+        if (!string.IsNullOrWhiteSpace(group.Username))
+        {
+            var publicLink = group.PublicLink ?? $"https://t.me/{group.Username.Trim().TrimStart('@')}";
+            await groupManagement.UpdateGroupJoinLinksAsync(group.Id, publicLink, null);
+            return Results.Ok(new LinkResultDto(publicLink));
+        }
+        if (!string.IsNullOrWhiteSpace(group.InviteLink))
+            return Results.Ok(new LinkResultDto(group.InviteLink));
+
         var accountId = await groupManagement.ResolveExecuteAccountIdAsync(group);
         if (accountId is not > 0)
             return Results.BadRequest(new OperationResultDto(false, "该群组暂无可用执行账号"));
-        return Results.Ok(new LinkResultDto(await groupService.ExportJoinLinkAsync(accountId.Value, group.TelegramId)));
+        var inviteLink = await groupService.ExportJoinLinkAsync(accountId.Value, group.TelegramId);
+        await groupManagement.UpdateGroupJoinLinksAsync(group.Id, group.PublicLink, inviteLink);
+        return Results.Ok(new LinkResultDto(inviteLink));
     }
 
     private static async Task<IResult> LeaveChannelAsync(int id, ChannelManagementService channelManagement, IChannelService channelService)
@@ -7090,7 +7100,12 @@ public static class PanelAdminApiEndpoints
                     x.IsCreator,
                     x.IsAdmin,
                     x.SyncedAt))
-                .ToList());
+                .ToList(),
+            group.CurrentStatus,
+            group.CurrentStatusCheckedAtUtc,
+            group.CurrentStatusAccountId,
+            group.PublicLink,
+            group.InviteLink);
 
     private static ChannelDetailDto ToDetailDto(Channel channel, IReadOnlyList<AccountChannel> memberships) =>
         new(
@@ -9286,6 +9301,11 @@ public sealed record GroupListItemDto(
     DateTime? SystemCreatedAtUtc,
     DateTime SyncedAt,
     IReadOnlyList<ChatMembershipAccountDto> Accounts,
+    string? CurrentStatus = null,
+    DateTime? CurrentStatusCheckedAtUtc = null,
+    int? CurrentStatusAccountId = null,
+    string? PublicLink = null,
+    string? InviteLink = null,
     string? Warning = null);
 
 public sealed record ChannelDetailDto(ChannelListItemDto Channel, IReadOnlyList<ChatMembershipAccountDto> Accounts);

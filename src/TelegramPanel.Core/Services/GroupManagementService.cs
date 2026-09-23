@@ -63,6 +63,14 @@ public class GroupManagementService
             existing.MemberCount = group.MemberCount;
             existing.About = group.About;
             existing.AccessHash = group.AccessHash;
+            if (group.CurrentStatusCheckedAtUtc.HasValue
+                && (!existing.CurrentStatusCheckedAtUtc.HasValue || group.CurrentStatusCheckedAtUtc >= existing.CurrentStatusCheckedAtUtc))
+            {
+                existing.CurrentStatus = string.IsNullOrWhiteSpace(group.CurrentStatus) ? existing.CurrentStatus : group.CurrentStatus;
+                existing.CurrentStatusCheckedAtUtc = group.CurrentStatusCheckedAtUtc;
+                existing.CurrentStatusAccountId = group.CurrentStatusAccountId;
+            }
+            existing.PublicLink = GetPublicLink(group.Username);
             if (group.CategoryId.HasValue)
                 existing.CategoryId = group.CategoryId;
             if (existing.CreatorAccountId == null && group.CreatorAccountId != null)
@@ -78,6 +86,7 @@ public class GroupManagementService
         }
 
         group.SyncedAt = DateTime.UtcNow;
+        group.PublicLink = GetPublicLink(group.Username);
         return await _groupRepository.AddAsync(group);
     }
 
@@ -86,6 +95,21 @@ public class GroupManagementService
         group.SyncedAt = DateTime.UtcNow;
         await _groupRepository.UpdateAsync(group);
     }
+
+    public async Task UpdateGroupJoinLinksAsync(int groupId, string? publicLink, string? inviteLink)
+    {
+        var group = await _groupRepository.GetByIdAsync(groupId);
+        if (group == null)
+            return;
+
+        group.PublicLink = publicLink;
+        if (!string.IsNullOrWhiteSpace(inviteLink))
+            group.InviteLink = inviteLink;
+        await _groupRepository.UpdateAsync(group);
+    }
+
+    private static string? GetPublicLink(string? username) =>
+        string.IsNullOrWhiteSpace(username) ? null : $"https://t.me/{username.Trim().TrimStart('@')}";
 
     public async Task DeleteGroupAsync(int id)
     {
@@ -146,32 +170,35 @@ public class GroupManagementService
         });
     }
 
-    public async Task DeleteStaleAccountGroupsAsync(int accountId, IReadOnlyCollection<int> keepGroupIds)
+    public async Task MarkUnseenAccountGroupsAsync(int accountId, IReadOnlyCollection<int> visibleGroupIds)
     {
-        var keepSet = keepGroupIds.Count == 0
+        var visibleSet = visibleGroupIds.Count == 0
             ? new HashSet<int>()
-            : keepGroupIds.ToHashSet();
+            : visibleGroupIds.ToHashSet();
 
-        var staleGroupIds = (await _accountGroupRepository.GetByAccountAsync(accountId))
-            .Where(x => !keepSet.Contains(x.GroupId))
-            .Select(x => x.GroupId)
+        var staleMemberships = (await _accountGroupRepository.GetByAccountAsync(accountId))
+            .Where(x => !visibleSet.Contains(x.GroupId))
             .Distinct()
             .ToList();
 
-        foreach (var groupId in staleGroupIds)
+        var checkedAt = DateTime.UtcNow;
+        foreach (var membership in staleMemberships)
+        {
+            if (membership.Group != null)
+            {
+                // 保留关联，仅记录该账号最近一次未看到此群的观察结果。
+                if (!membership.Group.CurrentStatusCheckedAtUtc.HasValue || checkedAt >= membership.Group.CurrentStatusCheckedAtUtc)
+                {
+                    membership.Group.CurrentStatus = "账号不可见";
+                    membership.Group.CurrentStatusCheckedAtUtc = checkedAt;
+                    membership.Group.CurrentStatusAccountId = accountId;
+                    await _groupRepository.UpdateAsync(membership.Group);
+                }
+            }
+        }
+
+        foreach (var groupId in staleMemberships.Select(x => x.GroupId).Distinct())
             await RemoveAccountGroupAsync(groupId, accountId);
-
-        var staleGroupIdSet = staleGroupIds.ToHashSet();
-        var creatorOnlyGroupIds = (await _groupRepository.FindAsync(x => x.CreatorAccountId == accountId))
-            .Select(x => x.Id)
-            .Where(id => !keepSet.Contains(id) && !staleGroupIdSet.Contains(id))
-            .Distinct()
-            .ToList();
-
-        foreach (var groupId in creatorOnlyGroupIds)
-            await DetachCreatorFromGroupAsync(groupId, accountId);
-
-        await _groupRepository.DeleteOrphanedAsync();
     }
 
     public async Task<IReadOnlyList<AccountGroup>> GetAccountGroupMembershipsAsync(int accountId, CancellationToken cancellationToken = default)
@@ -235,13 +262,19 @@ public class GroupManagementService
     /// </summary>
     public async Task<int?> ResolveExecuteAccountIdAsync(Group group, int? preferredAccountId = null)
     {
-        if (preferredAccountId.HasValue && preferredAccountId.Value > 0)
-            return preferredAccountId.Value;
+        return await ResolveAdminAccountIdAsync(group.Id, preferredAccountId);
+    }
 
-        if (group.CreatorAccountId.HasValue)
-            return group.CreatorAccountId.Value;
-
-        return await _accountGroupRepository.GetPreferredAdminAccountIdAsync(group.Id);
+    public async Task<int?> ResolveAdminAccountIdAsync(int groupId, int? preferredAccountId = null, CancellationToken cancellationToken = default)
+    {
+        var memberships = await _accountGroupRepository.GetByGroupAsync(groupId, cancellationToken);
+        var eligible = memberships
+            .Where(x => x.Account != null && x.Account.IsActive && (x.IsCreator || x.IsAdmin))
+            .OrderByDescending(x => preferredAccountId.HasValue && x.AccountId == preferredAccountId.Value)
+            .ThenByDescending(x => x.IsCreator)
+            .ThenBy(x => x.AccountId)
+            .FirstOrDefault();
+        return eligible?.AccountId;
     }
 }
 

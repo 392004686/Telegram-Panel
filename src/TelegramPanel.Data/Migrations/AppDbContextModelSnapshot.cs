@@ -482,6 +482,21 @@ namespace TelegramPanel.Data.Migrations
                     b.Property<int?>("CreatorAccountId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("CurrentStatus")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CurrentStatusAccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CurrentStatusCheckedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InviteLink")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("GroupId")
                         .HasColumnType("INTEGER");
 
@@ -492,6 +507,10 @@ namespace TelegramPanel.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("SyncedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublicLink")
+                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("SystemCreatedAtUtc")

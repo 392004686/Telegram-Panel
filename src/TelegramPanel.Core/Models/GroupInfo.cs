@@ -20,7 +20,7 @@ public record GroupInfo
 
     public bool IsPublic => !string.IsNullOrEmpty(Username);
 
-    public string Link => IsPublic
-        ? $"https://t.me/{Username}"
-        : $"https://t.me/c/{TelegramId}";
+    public string? Link => IsPublic
+        ? $"https://t.me/{Username!.Trim().TrimStart('@')}"
+        : null;
 }

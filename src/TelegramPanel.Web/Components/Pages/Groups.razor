@@ -98,6 +98,10 @@
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-2">群组 (@totalCount)</MudText>
     }
 </MudStack>
+@if (!string.IsNullOrWhiteSpace(groupSyncProgress))
+{
+    <MudText Typo="Typo.caption" Color="Color.Info" Class="mb-2">@groupSyncProgress</MudText>
+}
 
 <MudCard>
     <MudCardContent>
@@ -110,6 +114,9 @@
                 <MudTh>类型</MudTh>
                 <MudTh>群组分类</MudTh>
                 <MudTh>成员数</MudTh>
+                <MudTh>当前状态</MudTh>
+                <MudTh>公开链接</MudTh>
+                <MudTh>邀请链接</MudTh>
                 @if (filterAccount > 0)
                 {
                     <MudTh>当前账号角色</MudTh>
@@ -148,10 +155,35 @@
                 </MudTd>
                 <MudTd DataLabel="群组分类">
                     <MudChip T="string" Size="Size.Small" Color="@(context.CategoryId.HasValue ? Color.Info : Color.Default)">
-                        @(context.Category?.Name ?? "未分类")
+                        @(context.CategoryId.HasValue ? $"#{context.CategoryId} · {context.Category?.Name ?? "未分类"}" : "未分类")
                     </MudChip>
                 </MudTd>
                 <MudTd DataLabel="成员数">@context.MemberCount</MudTd>
+                <MudTd DataLabel="当前状态">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.CurrentStatus == "可见" ? Color.Success : context.CurrentStatus == "账号不可见" ? Color.Warning : Color.Default)">
+                        @(string.IsNullOrWhiteSpace(context.CurrentStatus) ? "未知" : context.CurrentStatus)
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="公开链接">
+                    @if (!string.IsNullOrWhiteSpace(context.PublicLink))
+                    {
+                        <MudLink Href="@context.PublicLink" Target="_blank">打开</MudLink>
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="邀请链接">
+                    @if (!string.IsNullOrWhiteSpace(context.InviteLink))
+                    {
+                        <MudLink Href="@context.InviteLink" Target="_blank">打开</MudLink>
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </MudTd>
                 @if (filterAccount > 0)
                 {
                     <MudTd DataLabel="当前账号角色">
@@ -213,6 +245,7 @@
     private List<GroupCategory> categories = new();
     private int totalCount;
     private bool loading = true;
+    private string? groupSyncProgress;
     private string searchString = "";
     private int filterAccount = 0;
     private int filterCategoryId = -1;
@@ -486,21 +519,16 @@
 
             foreach (var group in targets)
             {
-                var executeAccountId = await GroupManagement.ResolveExecuteAccountIdAsync(
-                    group,
-                    preferredAccountId: filterAccount > 0 ? filterAccount : null);
-                if (executeAccountId is not > 0)
+                try
+                {
+                    var link = await GetCachedJoinLinkAsync(group, filterAccount > 0 ? filterAccount : null);
+                    ok++;
+                    lines.Add($"{group.TelegramId}\t{group.Title}\t{link}");
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("无可用执行账号", StringComparison.Ordinal))
                 {
                     skipped++;
                     lines.Add($"{group.TelegramId}\t{group.Title}\t(无可用执行账号)");
-                    continue;
-                }
-
-                try
-                {
-                    var link = await GroupService.ExportJoinLinkAsync(executeAccountId.Value, group.TelegramId);
-                    ok++;
-                    lines.Add($"{group.TelegramId}\t{group.Title}\t{link}");
                 }
                 catch
                 {
@@ -604,9 +632,10 @@
             return;
 
         loading = true;
+        groupSyncProgress = $"正在刷新账号 {filterAccount} 的群组…";
         try
         {
-            var summary = await DataSync.SyncAccountAsync(filterAccount, CancellationToken.None);
+            var summary = await DataSync.SyncAccountGroupsOnlyAsync(filterAccount, CancellationToken.None);
 
             foreach (var failure in summary.AccountFailures)
                 Snackbar.Add($"账号 {failure.Phone} 同步失败：{failure.Error}", Severity.Warning);
@@ -621,6 +650,7 @@
         finally
         {
             loading = false;
+            groupSyncProgress = null;
         }
     }
 
@@ -630,9 +660,17 @@
             return;
 
         loading = true;
+        groupSyncProgress = "正在刷新全部账号的群组…";
         try
         {
-            var summary = await DataSync.SyncAllActiveAccountsAsync(CancellationToken.None);
+            var summary = await DataSync.SyncGroupsOnlyAsync(
+                accounts,
+                CancellationToken.None,
+                progress => InvokeAsync(() =>
+                {
+                    groupSyncProgress = $"刷新群组账号：{progress.ProcessedAccounts}/{progress.TotalAccounts}；失败 {progress.FailedAccounts}";
+                    StateHasChanged();
+                }));
 
             foreach (var failure in summary.AccountFailures)
                 Snackbar.Add($"账号 {failure.Phone} 同步失败：{failure.Error}", Severity.Warning);
@@ -647,6 +685,7 @@
         finally
         {
             loading = false;
+            groupSyncProgress = null;
         }
     }
 
@@ -670,21 +709,42 @@
     {
         try
         {
-            var executeAccountId = await ResolveGroupExecuteAccountIdAsync(group);
-            if (executeAccountId is not > 0)
-            {
-                Snackbar.Add("无法导出链接：该群组暂无可用执行账号，请先同步对应账号的群组数据", Severity.Warning);
-                return;
-            }
-
-            var link = await GroupService.ExportJoinLinkAsync(executeAccountId.Value, group.TelegramId);
+            var link = await GetCachedJoinLinkAsync(group, filterAccount > 0 ? filterAccount : null);
             await JS.InvokeVoidAsync("telegramPanel.copyText", link);
             Snackbar.Add("已复制链接", Severity.Success);
+            await ReloadTable();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("无可用执行账号", StringComparison.Ordinal))
+        {
+            Snackbar.Add("无法生成邀请链接：该群组暂无已关联的创建者/管理员账号，请先同步群组关联账号", Severity.Warning);
         }
         catch (Exception ex)
         {
             Snackbar.Add($"复制失败：{ex.Message}", Severity.Error);
         }
+    }
+
+    private async Task<string> GetCachedJoinLinkAsync(Group group, int? preferredAccountId)
+    {
+        if (!string.IsNullOrWhiteSpace(group.Username))
+        {
+            var publicLink = group.PublicLink ?? $"https://t.me/{group.Username.Trim().TrimStart('@')}";
+            group.PublicLink = publicLink;
+            await GroupManagement.UpdateGroupJoinLinksAsync(group.Id, publicLink, null);
+            return publicLink;
+        }
+
+        if (!string.IsNullOrWhiteSpace(group.InviteLink))
+            return group.InviteLink;
+
+        var executeAccountId = await GroupManagement.ResolveExecuteAccountIdAsync(group, preferredAccountId);
+        if (executeAccountId is not > 0)
+            throw new InvalidOperationException("该群组暂无可用执行账号");
+
+        var inviteLink = await GroupService.ExportJoinLinkAsync(executeAccountId.Value, group.TelegramId);
+        group.InviteLink = inviteLink;
+        await GroupManagement.UpdateGroupJoinLinksAsync(group.Id, group.PublicLink, inviteLink);
+        return inviteLink;
     }
 
     private async Task<int?> ResolveGroupExecuteAccountIdAsync(Group group)

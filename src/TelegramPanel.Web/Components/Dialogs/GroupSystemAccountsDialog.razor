@@ -13,7 +13,12 @@
         else
         {
             <MudStack Spacing="2">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">共 @memberships.Count 个本系统账号</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">共 @memberships.Count 个本系统账号</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Refresh"
+                               Disabled="@loading" OnClick="LoadAsync">重新加载关联</MudButton>
+                </MudStack>
 
                 @if (memberships.Count == 0)
                 {

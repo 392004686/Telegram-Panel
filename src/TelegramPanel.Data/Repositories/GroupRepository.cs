@@ -18,7 +18,7 @@ public class GroupRepository : Repository<Group>, IGroupRepository
             .AsNoTracking()
             .AsQueryable();
 
-        query = query.Where(g => g.CreatorAccountId != null || g.AccountGroups.Any());
+        query = query.Where(g => g.CreatorAccountId != null || g.AccountGroups.Any() || g.CurrentStatusCheckedAtUtc != null);
 
         membershipRole = (membershipRole ?? "all").Trim().ToLowerInvariant();
         if (accountId > 0)
@@ -104,7 +104,7 @@ public class GroupRepository : Repository<Group>, IGroupRepository
             .Include(g => g.Category)
             .Include(g => g.AccountGroups)
             .AsSplitQuery()
-            .Where(g => g.CreatorAccountId != null || g.AccountGroups.Any())
+            .Where(g => g.CreatorAccountId != null || g.AccountGroups.Any() || g.CurrentStatusCheckedAtUtc != null)
             .OrderByDescending(g => g.SyncedAt)
             .ToListAsync();
     }

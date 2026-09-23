@@ -300,6 +300,99 @@ public class DataSyncService
         return await SyncAccountsAsync(new[] { account }, cancellationToken, progressCallback);
     }
 
+    public async Task<SyncSummary> SyncAccountGroupsOnlyAsync(
+        int accountId,
+        CancellationToken cancellationToken,
+        Func<SyncProgress, Task>? progressCallback = null)
+    {
+        var account = await _accountManagement.GetAccountAsync(accountId)
+            ?? throw new InvalidOperationException($"账号不存在：{accountId}");
+        return await SyncGroupsOnlyAsync(new[] { account }, cancellationToken, progressCallback);
+    }
+
+    public async Task<SyncSummary> SyncActiveAccountGroupsOnlyAsync(
+        CancellationToken cancellationToken,
+        Func<SyncProgress, Task>? progressCallback = null)
+    {
+        return await SyncGroupsOnlyAsync(await GetDistinctActiveAccountsAsync(), cancellationToken, progressCallback);
+    }
+
+    public async Task<SyncSummary> SyncGroupsOnlyAsync(
+        IEnumerable<Account> accounts,
+        CancellationToken cancellationToken,
+        Func<SyncProgress, Task>? progressCallback = null)
+    {
+        var accountList = accounts
+            .Where(x => x != null)
+            .GroupBy(x => x.Id)
+            .Select(x => x.First())
+            .ToList();
+        var summary = new SyncSummary { TotalAccounts = accountList.Count };
+        var delayMs = Math.Clamp(_configuration.GetValue("Telegram:DefaultDelayMs", 2000), 0, 60000);
+
+        for (var index = 0; index < accountList.Count; index++)
+        {
+            var account = accountList[index];
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (ShouldSkipAccountDataSync(account))
+                {
+                    summary.SkippedAccounts.Add((account.Id, account.Phone, account.TelegramStatusSummary ?? "Session 不可用"));
+                    continue;
+                }
+
+                var groupInfos = await _groupService.GetVisibleGroupsAsync(account.Id, cancellationToken);
+                var keepGroupIds = new List<int>(groupInfos.Count);
+                foreach (var info in groupInfos)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var now = DateTime.UtcNow;
+                    var saved = await _groupManagement.CreateOrUpdateGroupAsync(new Group
+                    {
+                        TelegramId = info.TelegramId,
+                        AccessHash = info.AccessHash > 0 ? info.AccessHash : null,
+                        Title = info.Title,
+                        Username = info.Username,
+                        MemberCount = info.MemberCount,
+                        About = info.About,
+                        CreatorAccountId = info.IsCreator ? account.Id : null,
+                        CreatedAt = info.CreatedAt,
+                        CurrentStatus = "可见",
+                        CurrentStatusCheckedAtUtc = now,
+                        CurrentStatusAccountId = account.Id
+                    });
+                    keepGroupIds.Add(saved.Id);
+                    await _groupManagement.UpsertAccountGroupAsync(account.Id, saved.Id, info.IsCreator, info.IsAdmin, now);
+                    summary.TotalGroupsSynced++;
+                }
+
+                await _groupManagement.MarkUnseenAccountGroupsAsync(account.Id, keepGroupIds);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                summary.AccountFailures.Add((account.Id, account.Phone, ex.Message));
+                _logger.LogWarning(ex, "Visible group refresh failed for account {AccountId}", account.Id);
+            }
+            finally
+            {
+                summary.ProcessedAccounts++;
+                if (progressCallback != null)
+                    await progressCallback(new SyncProgress(summary.TotalAccounts, summary.ProcessedAccounts, summary.FailedAccountsCount));
+            }
+
+            if (delayMs > 0 && index < accountList.Count - 1)
+                await Task.Delay(delayMs + Random.Shared.Next(0, Math.Min(500, delayMs + 1)), cancellationToken);
+        }
+
+        summary.SucceededAccounts = summary.TotalAccounts - summary.FailedAccountsCount - summary.SkippedAccounts.Count;
+        return summary;
+    }
+
     public async Task<SyncSummary> SyncAccountsAsync(
         IEnumerable<Account> accounts,
         CancellationToken cancellationToken,
@@ -401,13 +494,16 @@ public class DataSyncService
                     var group = new Group
                     {
                         TelegramId = groupInfo.TelegramId,
-                        AccessHash = groupInfo.AccessHash,
+                        AccessHash = groupInfo.AccessHash > 0 ? groupInfo.AccessHash : null,
                         Title = groupInfo.Title,
                         Username = groupInfo.Username,
                         MemberCount = groupInfo.MemberCount,
                         About = groupInfo.About,
                         CreatorAccountId = groupInfo.IsCreator ? account.Id : null,
-                        CreatedAt = groupInfo.CreatedAt
+                        CreatedAt = groupInfo.CreatedAt,
+                        CurrentStatus = "可见",
+                        CurrentStatusCheckedAtUtc = DateTime.UtcNow,
+                        CurrentStatusAccountId = account.Id
                     };
 
                     var saved = await _groupManagement.CreateOrUpdateGroupAsync(group);
@@ -423,7 +519,7 @@ public class DataSyncService
                     summary.TotalGroupsSynced++;
                 }
 
-                await _groupManagement.DeleteStaleAccountGroupsAsync(account.Id, keepGroupIds);
+                await _groupManagement.MarkUnseenAccountGroupsAsync(account.Id, keepGroupIds);
 
                 await _telegramTools.EnsureEstimatedRegistrationAsync(account.Id, cancellationToken);
 
